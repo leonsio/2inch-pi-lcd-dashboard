@@ -1,0 +1,7 @@
+psutil
+lgpio
+pillow
+numpy
+spidev
+gpiozero
+netifaces

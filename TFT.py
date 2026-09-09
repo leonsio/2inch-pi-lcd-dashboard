@@ -20,9 +20,8 @@ try:
         XML_RPC_TOKEN,
         HOME_ASSISTANT_URL,
         HOME_ASSISTANT_TOKEN,
-        ADGUARD_URL,
-        ADGUARD_USERNAME,
-        ADGUARD_PASSWORD,
+        ADGUARD_PROTECTION_ENTITY,
+        ADGUARD_BLOCKED_RATIO_ENTITY,
         C_BG,
         C_T1,
         C_T2,
@@ -90,16 +89,23 @@ def get_pivccu_status():
     return True, pivccu_version, pivccu_messages
 
 
-def get_home_assistant_status():
-    """Return whether Home Assistant is reachable and its version."""
-    url = f"{HOME_ASSISTANT_URL.rstrip('/')}/api/config"
-    headers = {
+def get_ha_headers():
+    return {
         'Authorization': f'Bearer {HOME_ASSISTANT_TOKEN}',
         'Content-Type': 'application/json',
     }
 
+
+def get_home_assistant_status():
+    """Return whether Home Assistant is reachable and its version."""
+    url = f"{HOME_ASSISTANT_URL.rstrip('/')}/api/config"
+
     try:
-        response = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
+        response = requests.get(
+            url,
+            headers=get_ha_headers(),
+            timeout=REQUEST_TIMEOUT,
+        )
         if response.status_code in (401, 403):
             return True, 'AUTH'
         response.raise_for_status()
@@ -113,50 +119,61 @@ def get_home_assistant_status():
         return True, '?'
 
 
-def get_adguard_status():
-    """Return AdGuard Home reachability, protection state and blocked percentage."""
-    base_url = ADGUARD_URL.rstrip('/')
-    auth = None
-    if ADGUARD_USERNAME or ADGUARD_PASSWORD:
-        auth = (ADGUARD_USERNAME, ADGUARD_PASSWORD)
+def get_home_assistant_entity(entity_id):
+    """Return one Home Assistant entity state object or None if unavailable."""
+    if not entity_id:
+        return None
+
+    url = f"{HOME_ASSISTANT_URL.rstrip('/')}/api/states/{entity_id}"
 
     try:
-        status_response = requests.get(
-            f"{base_url}/control/status",
-            auth=auth,
+        response = requests.get(
+            url,
+            headers=get_ha_headers(),
             timeout=REQUEST_TIMEOUT,
         )
-
-        if status_response.status_code in (401, 403):
-            return True, None, None, 'AUTH'
-
-        status_response.raise_for_status()
-        status_data = status_response.json()
-        protection_enabled = bool(status_data.get('protection_enabled', False))
-
-        stats_response = requests.get(
-            f"{base_url}/control/stats",
-            auth=auth,
-            timeout=REQUEST_TIMEOUT,
-        )
-
-        if stats_response.status_code in (401, 403):
-            return True, protection_enabled, None, 'AUTH'
-
-        stats_response.raise_for_status()
-        stats_data = stats_response.json()
-        dns_queries = int(stats_data.get('num_dns_queries') or 0)
-        blocked_queries = int(stats_data.get('num_blocked_filtering') or 0)
-        blocked_percent = (blocked_queries / dns_queries * 100.0) if dns_queries else 0.0
-
-        return True, protection_enabled, blocked_percent, ''
-
+        if response.status_code == 404:
+            logging.warning("Home Assistant entity not found: %s", entity_id)
+            return None
+        response.raise_for_status()
+        return response.json()
     except requests.RequestException:
-        logging.exception("Failed to reach AdGuard Home")
-        return False, None, None, ''
-    except (ValueError, TypeError):
-        logging.exception("Invalid response from AdGuard Home")
-        return True, None, None, 'API'
+        logging.exception("Failed to read Home Assistant entity %s", entity_id)
+        return None
+    except ValueError:
+        logging.exception("Invalid JSON for Home Assistant entity %s", entity_id)
+        return None
+
+
+def get_adguard_status():
+    """Read AdGuard Home status through Home Assistant entities."""
+    protection = get_home_assistant_entity(ADGUARD_PROTECTION_ENTITY)
+    blocked_ratio = get_home_assistant_entity(ADGUARD_BLOCKED_RATIO_ENTITY)
+
+    if protection is None:
+        return False, None, None, 'ENTITY'
+
+    protection_state = str(protection.get('state', '')).lower()
+
+    if protection_state in ('unavailable', 'unknown', ''):
+        return False, None, None, 'UNAVAIL'
+
+    protection_enabled = protection_state == 'on'
+    blocked_percent = None
+
+    if blocked_ratio is not None:
+        blocked_state = str(blocked_ratio.get('state', '')).lower()
+        if blocked_state not in ('unavailable', 'unknown', ''):
+            try:
+                blocked_percent = float(blocked_state)
+            except ValueError:
+                logging.warning(
+                    "Could not parse AdGuard blocked ratio state %r from %s",
+                    blocked_state,
+                    ADGUARD_BLOCKED_RATIO_ENTITY,
+                )
+
+    return True, protection_enabled, blocked_percent, ''
 
 
 def clear_screen():
@@ -344,7 +361,7 @@ def main():
                         anchor="mm"
                     )
 
-                # AdGuard Home - middle right
+                # AdGuard Home - middle right, read via Home Assistant entities
                 draw.text(
                     (hdd_x, row2_center_y - cell_height * 0.36),
                     'ADGUARD', fill=C_T2, font=Font4, anchor="mm"
@@ -357,18 +374,20 @@ def main():
                     anchor="mm"
                 )
                 if adguard_online:
-                    if adguard_detail:
-                        adguard_text = adguard_detail
-                    elif adguard_protection is False:
+                    if adguard_protection is False:
                         adguard_text = 'PROT OFF'
                     elif adguard_blocked_percent is not None:
                         adguard_text = f'BLOCK {adguard_blocked_percent:.1f}%'
                     else:
-                        adguard_text = 'ONLINE'
+                        adguard_text = 'PROT ON'
+                else:
+                    adguard_text = adguard_detail
+
+                if adguard_text:
                     draw.text(
                         (hdd_x, row2_center_y + cell_height * 0.30),
                         adguard_text,
-                        fill=C_T1,
+                        fill=C_T1 if adguard_online else C_ERROR,
                         font=Font4,
                         anchor="mm"
                     )

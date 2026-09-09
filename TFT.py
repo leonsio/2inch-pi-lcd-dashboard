@@ -4,13 +4,11 @@ import time
 import psutil
 import socket
 import logging
-import threading
 import netifaces
 import signal
 import requests
-from lxml import etree 
+from lxml import etree
 from lcd import LCD_2inch
-from collections import deque
 from PIL import Image, ImageDraw, ImageFont
 
 # Choose how to display CPU usage percentages
@@ -19,312 +17,367 @@ SHOW_PER_CORE = False
 # True  = [0 - 400%]
 
 # Raspberry Pi LCD pin configuration:
-#to be done in lcdconfig.py
+# to be done in lcdconfig.py
 disp = None
 
-xml_rpc_token='NNXkXnaGVXpFDLgz'
+xml_rpc_token = 'NNXkXnaGVXpFDLgz'
 
 # Text colors
-C_BG = '#00129A' #LCD bacground
-C_T1 = '#FFFFFF' #main text
-C_T2 = '#c9c9c9' #text on top
-C_T3 = '#c9c9c9' #text on bottom
-C_W3P = ['#d5c1ee', '#e0cce4', '#c2f0ba', '#bfc7c0', '#c2cbe6', '#d5c2b7', '#b4ffe1', '#ced0e7', '#e2c9c1', '#cee8f8',
-     '#e4d9d9', '#dccfc3', '#dee7f3', '#e4e9e1', '#b9c6dc', '#bdb8e3'] #colors for Web3Pi.io text
+C_BG = '#00129A'  # LCD background
+C_T1 = '#FFFFFF'  # main text
+C_T2 = '#c9c9c9'  # secondary text
+C_T3 = '#c9c9c9'  # bottom text
 
 logging.basicConfig(
     format='%(asctime)s %(levelname)-8s %(message)s',
     level=logging.INFO,
-    datefmt='%Y-%m-%d %H:%M:%S')
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
 
-def get_pivccu3_systemNotification():
-    global pivccu_ip
 
-    pivccu_ip="192.168.2.155"
-    pivccu_xmlrpc_url="http://"+ pivccu_ip.strip() +"/addons/xmlapi/systemNotification.cgi?sid="+xml_rpc_token
-    resp = requests.get(pivccu_xmlrpc_url)
-    tree = etree.fromstring(resp.content)
+def get_pivccu3_system_notification(pivccu_ip):
+    """Return the number of piVCCU system notifications."""
+    pivccu_xmlrpc_url = (
+        f"http://{pivccu_ip.strip()}"
+        f"/addons/xmlapi/systemNotification.cgi?sid={xml_rpc_token}"
+    )
+    response = requests.get(pivccu_xmlrpc_url, timeout=5)
+    response.raise_for_status()
+    tree = etree.fromstring(response.content)
     return len(tree.xpath(".//notification"))
 
 
+def get_pivccu_status():
+    """Return current piVCCU status, version and system notification count."""
+    status = os.system('systemctl is-active --quiet pivccu.service')
+    if status != 0:
+        logging.info("piVCCU is not running")
+        return False, '', 0
+
+    pivccu_ip = os.popen(
+        "pivccu-info | grep ^IP | cut -d\":\" -f2 | tr -d ' '"
+    ).read().strip()
+    pivccu_version = os.popen(
+        "pivccu-info | grep version | cut -d\":\" -f2 | tr -d ' '"
+    ).read().strip()
+
+    try:
+        pivccu_messages = get_pivccu3_system_notification(pivccu_ip)
+    except Exception:
+        logging.exception("Failed to read piVCCU system notifications")
+        pivccu_messages = -1
+
+    return True, pivccu_version, pivccu_messages
+
+
 def checkIfProcessRunning(processName):
-    '''
-    Check if there is any running process that contains the given name processName.
-    '''
-    #Iterate over the all the running process
+    """Check if any running process contains the given process name."""
     for proc in psutil.process_iter():
         try:
-            # Check if process name contains the given name string.
             if processName.lower() in proc.name().lower():
                 return True
         except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
             pass
-    return False;
+    return False
 
-# Function to clear the screen
+
 def clear_screen():
+    """Clear the screen and shut down the display cleanly."""
     global disp
-    # Create a black image of the same size as the display
+
+    if disp is None:
+        return
+
     empty_image = Image.new('RGB', (disp.width, disp.height), color=(0, 0, 0))
     disp.ShowImage(empty_image)
-    # Optionally turn off backlight if supported
     disp.bl_DutyCycle(0)
     disp.module_exit()
 
-# Function to handle shutdown signals
+
 def handle_shutdown_signal(signum, frame):
     logging.info("Shutting down, clearing the screen...")
     clear_screen()
     sys.exit(0)
 
-# Register signal handlers for SIGINT and SIGTERM
+
 signal.signal(signal.SIGINT, handle_shutdown_signal)
 signal.signal(signal.SIGTERM, handle_shutdown_signal)
 
+
 def main():
-
-    global pivccu_ip
-
-    status = os.system('systemctl is-active --quiet pivccu.service')
-    if status == 0:
-        pivccu_active=True
-        pivccu_ip = os.popen("pivccu-info  | grep ^IP | cut -d\":\" -f2 | tr -d ' '").read()
-        pivccu_version = os.popen("pivccu-info  | grep version | cut -d\":\" -f2 | tr -d ' '").read()
-        pivccu_messages = get_pivccu3_systemNotification()
-    else:
-        pivccu_active=False
-        logging.info("Pivccu is not running")
+    pivccu_active, pivccu_version, pivccu_messages = get_pivccu_status()
 
     if checkIfProcessRunning('pihole-FTL'):
-        pihole_active=1
-        print('Pihole is running')
+        pihole_active = True
+        logging.info('Pi-hole is running')
     else:
-        pihole_active=0
-        print('Pihole is offline')
+        pihole_active = False
+        logging.info('Pi-hole is offline')
 
     logging.info('Raspberry Pi Hardware Monitor Start')
-    # chceck sensors avability
+
     if not hasattr(psutil, "sensors_temperatures"):
         logging.error("sensors_temperatures not supported")
-        sys.exit("SPI is not enabled")
+        sys.exit("CPU temperature sensors are not supported")
+
     temps = psutil.sensors_temperatures()
     if not temps:
-        logging.error("sensors_temperatures not supported")
-        sys.exit("SPI is not enabled")
+        logging.error("sensors_temperatures not available")
+        sys.exit("CPU temperature sensors are not available")
 
     global hostname
     hostname = get_hostname()
 
-    # display with hardware SPI:
     global disp
     disp = LCD_2inch.LCD_2inch()
-    # Initialize library.
     disp.Init()
-    # Clear display.
     disp.clear()
-    # Set the backlight to 100
-    disp.bl_DutyCycle(100) # ToDo: Fix hardware PWM on Rpi 5
-    # If backlight is flickering a quick fix is to connect BL pin to 3.3V on Rpi to set backlight to 100%
+    disp.bl_DutyCycle(100)  # ToDo: Fix hardware PWM on Rpi 5
 
-    # https://www.fontsquirrel.com/fonts/jetbrains-mono
     Font1 = ImageFont.truetype("./font/JetBrainsMono-Medium.ttf", 35)
     Font2 = ImageFont.truetype("./font/JetBrainsMono-Medium.ttf", 25)
     Font3 = ImageFont.truetype("./font/JetBrainsMono-Medium.ttf", 20)
     Font4 = ImageFont.truetype("./font/JetBrainsMono-Medium.ttf", 15)
 
-    image1 = Image.new("RGB", (disp.height, disp.width ), "WHITE")
-    draw = ImageDraw.Draw(image1)
-
     get_ip_address()
-
     low_frequency_tasks()
     high_frequency_tasks()
     medium_frequency_tasks()
 
     try:
-        # Get the current time (in seconds)
         next_time = time.time() + 1
-        C_W3P_index = 0
         skip = 0
-        info_change=5
         logging.info('Entering forever loop')
+
         while True:
             try:
-                high_frequency_tasks() # every second
+                high_frequency_tasks()  # every second
 
                 if skip % 10 == 0:
                     medium_frequency_tasks()
 
                 if skip % 30 == 0:
                     low_frequency_tasks()
+                    pivccu_active, pivccu_version, pivccu_messages = get_pivccu_status()
 
-                # Draw background
-                #image1 = Image.open('./img/lcdbg1.png')
-                image1 = Image.new("RGB", (disp.height, disp.width ), "WHITE")
+                # The LCD driver exposes portrait dimensions. The dashboard is rendered
+                # in landscape orientation, therefore width and height are swapped here.
+                screen_width = disp.height
+                screen_height = disp.width
+
+                image1 = Image.new("RGB", (screen_width, screen_height), "WHITE")
                 draw = ImageDraw.Draw(image1)
 
-                blockh_size=disp.height/3
-                blockh_mid=blockh_size/2
-                blockw_size=disp.width/3
-                blockw_mid=blockw_size/2
+                cell_width = screen_width / 3
+                cell_height = screen_height / 3
+
+                cpu_x = cell_width * 0.5
+                ram_x = cell_width * 1.5
+                hdd_x = cell_width * 2.5
+
+                row1_center_y = cell_height * 0.5
+                row2_center_y = cell_height * 1.5
+
+                title_y = cell_height * 0.12
+                value_y = cell_height * 0.50
+                detail_y = cell_height * 0.875
+                percent_offset_x = cell_width * 0.26
+                percent_offset_y = cell_height * 0.06
 
                 # Draw vertical lines
-                draw.line([(blockh_size  * 1 , 0), (blockh_size * 1, disp.width)], fill="BLACK", width=2, joint=None)
-                draw.line([(blockh_size  * 2 , 0), (blockh_size * 2, disp.width-blockw_size)], fill="BLACK", width=2, joint=None)
+                draw.line(
+                    [(cell_width, 0), (cell_width, screen_height)],
+                    fill="BLACK",
+                    width=2
+                )
+                draw.line(
+                    [(cell_width * 2, 0), (cell_width * 2, screen_height - cell_height)],
+                    fill="BLACK",
+                    width=2
+                )
 
                 # Draw horizontal lines
-                draw.line([(0, blockw_size * 1), (disp.height, blockw_size * 1)], fill="BLACK", width=2, joint=None)
-                draw.line([(0, blockw_size * 2), (disp.height, blockw_size * 2)], fill="BLACK", width=2, joint=None)
-
-                #
-                # vertical 1 / horizontal 1
-                #
+                draw.line(
+                    [(0, cell_height), (screen_width, cell_height)],
+                    fill="BLACK",
+                    width=2
+                )
+                draw.line(
+                    [(0, cell_height * 2), (screen_width, cell_height * 2)],
+                    fill="BLACK",
+                    width=2
+                )
 
                 # CPU
-                draw.text((blockh_mid, 9), 'CPU', fill=C_T2, font=Font2, anchor="mm")
+                draw.text((cpu_x, title_y), 'CPU', fill=C_T2, font=Font2, anchor="mm")
                 if SHOW_PER_CORE:
-                    draw.text((blockh_mid , blockw_mid), f'{int(cpu_percent)}', fill=f'{value_to_hex_color_cpu_usage_400(int(cpu_percent))}', font=Font1, anchor="mm")
+                    draw.text(
+                        (cpu_x, value_y),
+                        f'{int(cpu_percent)}',
+                        fill=value_to_hex_color_cpu_usage_400(int(cpu_percent)),
+                        font=Font1,
+                        anchor="mm"
+                    )
                 else:
-                    draw.text((blockh_mid , blockw_mid), f'{int(cpu_percent)}', fill=f'{value_to_hex_color_cpu_usage(int(cpu_percent))}', font=Font1, anchor="mm")
-                    draw.text((80 , 45 ), '%', fill=C_T2, font=Font2, anchor="mm")
-                # CPU TEMP
-                draw.text((blockh_mid, 70), f'TEMP:{int(cpu_temp)}%', fill=C_T2, font=Font4, anchor="mm")
+                    draw.text(
+                        (cpu_x, value_y),
+                        f'{int(cpu_percent)}',
+                        fill=value_to_hex_color_cpu_usage(int(cpu_percent)),
+                        font=Font1,
+                        anchor="mm"
+                    )
+                    draw.text(
+                        (cpu_x + percent_offset_x, value_y + percent_offset_y),
+                        '%',
+                        fill=C_T2,
+                        font=Font2,
+                        anchor="mm"
+                    )
 
-                #
-                # v1 / h2
-                #
-                x=blockh_mid
-                y=blockw_mid+blockw_size
+                draw.text(
+                    (cpu_x, detail_y),
+                    f'TEMP:{int(cpu_temp)}°C',
+                    fill=C_T2,
+                    font=Font4,
+                    anchor="mm"
+                )
 
                 # piVCCU
-                draw.text((x, y-29 ), 'piVCCU', fill=C_T2, font=Font2, anchor="mm")
+                draw.text(
+                    (cpu_x, row2_center_y - cell_height * 0.36),
+                    'piVCCU',
+                    fill=C_T2,
+                    font=Font2,
+                    anchor="mm"
+                )
                 if pivccu_active:
-                    draw.text((x, y), f'Err:{int(pivccu_messages)}', fill="#FF0000", font=Font3, anchor="mm")
-                    draw.text((x, y+40), f'V:{pivccu_version}', fill=C_T2, font=Font4, anchor="mm")
+                    message_text = 'Err:?' if pivccu_messages < 0 else f'Err:{pivccu_messages}'
+                    draw.text(
+                        (cpu_x, row2_center_y),
+                        message_text,
+                        fill="#FF0000",
+                        font=Font3,
+                        anchor="mm"
+                    )
+                    draw.text(
+                        (cpu_x, row2_center_y + cell_height * 0.50),
+                        f'V:{pivccu_version}',
+                        fill=C_T2,
+                        font=Font4,
+                        anchor="mm"
+                    )
                 else:
-                    draw.text((x, y), 'OFFLINE', fill="#FF0000", font=Font3, anchor="mm")
+                    draw.text(
+                        (cpu_x, row2_center_y),
+                        'OFFLINE',
+                        fill="#FF0000",
+                        font=Font3,
+                        anchor="mm"
+                    )
 
-                # piHole
-
-                #
-                # vertical 2 / horizontal 1
-                #
-                blockh_mid = blockh_mid + blockh_size
+                # Pi-hole placeholder. pihole_active is already detected and can be
+                # rendered in one of the remaining cells in a later layout step.
 
                 # RAM
-                draw.text((blockh_mid, 9 ), 'RAM', fill=C_T2, font=Font2, anchor="mm")
-                draw.text((blockh_mid, blockw_mid), f'{int(mem.percent)}', fill=f'{value_to_hex_color_cpu_usage(int(mem.percent))}', font=Font1, anchor="mm")
-                draw.text((195 , 45 ), '%', fill=C_T2, font=Font2, anchor="mm")
-                draw.text((blockh_mid, 70 ), f'{ram_used:.1f}/{ram_total}GB', fill=C_T2, font=Font4, anchor="mm")
+                draw.text((ram_x, title_y), 'RAM', fill=C_T2, font=Font2, anchor="mm")
+                draw.text(
+                    (ram_x, value_y),
+                    f'{int(mem.percent)}',
+                    fill=value_to_hex_color_cpu_usage(int(mem.percent)),
+                    font=Font1,
+                    anchor="mm"
+                )
+                draw.text(
+                    (ram_x + percent_offset_x, value_y + percent_offset_y),
+                    '%',
+                    fill=C_T2,
+                    font=Font2,
+                    anchor="mm"
+                )
+                draw.text(
+                    (ram_x, detail_y),
+                    f'{ram_used:.1f}/{ram_total}GB',
+                    fill=C_T2,
+                    font=Font4,
+                    anchor="mm"
+                )
 
-                #
-                # vertical 3 / horizontal 1
-                #
-                blockh_mid = blockh_mid + blockh_size
+                # HDD
+                draw.text((hdd_x, title_y), 'HDD', fill=C_T2, font=Font2, anchor="mm")
+                draw.text(
+                    (hdd_x, value_y),
+                    f'{int(disk.percent)}',
+                    fill=value_to_hex_color_cpu_usage(int(disk.percent)),
+                    font=Font1,
+                    anchor="mm"
+                )
+                draw.text(
+                    (hdd_x + percent_offset_x, value_y + percent_offset_y),
+                    '%',
+                    fill=C_T2,
+                    font=Font2,
+                    anchor="mm"
+                )
+                draw.text(
+                    (hdd_x, detail_y),
+                    f'{disk_used_gb:.1f}/{int(disk_total_gb)}GB',
+                    fill=C_T2,
+                    font=Font4,
+                    anchor="mm"
+                )
 
-                # DISK
-                draw.text((blockh_mid, 9 ), 'HDD', fill=C_T2, font=Font2, anchor="mm")
-                draw.text((blockh_mid, 40 ), f'{int(disk.percent)}', fill=f'{value_to_hex_color_cpu_usage(int(disk.percent))}', font=Font1, anchor="mm")
-                draw.text((300 , 45 ), '%', fill=C_T2, font=Font2, anchor="mm")
-                draw.text((blockh_mid, 70 ), f'{disk_free_gb:.1f}/{int(disk_total_gb)}GB', fill=C_T2, font=Font4, anchor="mm")
-
-
-                """
-                # Network
-                x = -80
-                y = -90
-                draw.text((120 + x, 108 + y), net_interface, fill=C_T2, font=Font2, anchor="mm")
-                global net_u, net_d
-                if net_d >= 100:
-                    draw.text((85 + x, 135 + y), f"D:{net_d:.0f}", fill=C_T1, font=Font3, anchor="lm")
-                else:
-                    draw.text((85 + x, 135 + y), f"D:{net_d:.1f}", fill=C_T1, font=Font3, anchor="lm")
-
-                if net_d >= 100:
-                    draw.text((85 + x, 155 + y), f"U:{net_u:.0f}", fill=C_T1, font=Font3, anchor="lm")
-                else:
-                    draw.text((85 + x, 155 + y), f"U:{net_u:.1f}", fill=C_T1, font=Font3, anchor="lm")
-
-                draw.text((135 + x, 176 + y), 'Mbps', fill=C_T2, font=Font3, anchor="mm")
-
-                # SWAP
-                x = 80
-                y = 0
-                draw.text((115 + x, 108 + y), 'SWAP', fill=C_T2, font=Font2, anchor="mm")
-                draw.text((120 + x, 140 + y), f'{int(swap.percent)}', fill=C_T1, font=Font1, anchor="mm")
-                draw.text((153 + x, 145 + y), '%', fill=C_T2, font=Font2, anchor="mm")
-                #draw.text((153 + x, 110 + y), '%', fill=C_T2, font=Font2, anchor="mm")
-
-                # Local IP / HostName
-                x = 40
-                y = 95
-                draw.text((120, 108 + y), 'IP / HOSTNAME', fill=C_T2, font=Font2, anchor="mm")
-                draw.text((120, 170 + y - 35), f'{ip_local_address}', fill=C_T1, font=Font3, anchor="mm")
-                draw.text((120, 170 + y - 10), f'{hostname}.local', fill=C_T1, font=Font3, anchor="mm")
-
-                """
-
-                # Send image to lcd display
                 disp.ShowImage(image1)
 
                 skip += 1
 
-                # Wait until the next call
                 time.sleep(max(0, next_time - time.time()))
                 next_time += (time.time() - next_time) // 1 * 1 + 1
-            except Exception as error:
-                logging.error("An exception occurred: " + type(error).__name__)
+
+            except Exception:
+                logging.exception("Dashboard update failed")
                 time.sleep(1)
 
     except KeyboardInterrupt:
         logging.info("Loop interrupted by user")
-    except Exception as error:
-        logging.error("An exception occurred: " + type(error).__name__)
+    except Exception:
+        logging.exception("Dashboard main loop failed")
 
     logging.info('End forever loop')
     logging.info('Hardware Monitor End')
     clear_screen()
 
+
 def print_stats():
     try:
-        global cpu_percent, cpu_temp, disk, disk_free_gb, ip_local_address, ram, swap
-        logging.info(f'Values -> CPU: {int(cpu_percent)}%, CPU_TEMP: {int(cpu_temp)}°C, RAM: {int(mem.percent)}%, SWAP: {int(swap.percent)}%, DISK: {int(disk.percent)}%')
-    except Exception as error:
-        logging.error("An exception occurred: " + type(error).__name__)
+        logging.info(
+            f'Values -> CPU: {int(cpu_percent)}%, '
+            f'CPU_TEMP: {int(cpu_temp)}°C, '
+            f'RAM: {int(mem.percent)}%, '
+            f'SWAP: {int(swap.percent)}%, '
+            f'DISK: {int(disk.percent)}%'
+        )
+    except Exception:
+        logging.exception("Failed to print system statistics")
+
 
 def get_cpu_temperature():
-    """
-    Retrieves the current CPU temperature using the psutil library.
-
-    This function utilizes the `psutil.sensors_temperatures` method to fetch temperature
-    sensor data from the system. If the sensors are not supported or an error occurs,
-    it logs the issue and returns a default value of 0.
-
-    Returns:
-        float: The current CPU temperature in degrees Celsius. Returns 0 if sensor
-               data is not available or an error occurs.
-
-    Raises:
-        KeyError: If the temperature data structure does not contain the expected keys.
-                  This is caught and handled within the function.
-    """
+    """Retrieve the current CPU temperature using psutil."""
     temps = psutil.sensors_temperatures()
     if not temps:
-        logging.error("w: sensors_temperatures not supported")
+        logging.error("sensors_temperatures not supported")
         return 0
 
     try:
-        cpu_temp = temps[next(iter(temps))][0].current #cpu_thermal
-    except KeyError:
-        cpu_temp = 0
+        return temps[next(iter(temps))][0].current
+    except (KeyError, IndexError):
+        logging.exception("Failed to read CPU temperature")
+        return 0
 
-    return cpu_temp
 
 def high_frequency_tasks():
     logging.debug("high_frequency_tasks()")
     global cpu_percent
     global cpu_temp
-    global SHOW_PER_CORE
 
     if SHOW_PER_CORE:
         cpu_percent = sum(psutil.cpu_percent(percpu=True))
@@ -334,53 +387,48 @@ def high_frequency_tasks():
     cpu_temp = get_cpu_temperature()
 
 
-
 def medium_frequency_tasks():
     logging.debug("medium_frequency_tasks()")
 
     global mem
     global swap
     global ram_used, ram_total
-    # global nvme_temp
-    # global cpu_rpm
+
     mem = psutil.virtual_memory()
     swap = psutil.swap_memory()
-    ram_used = (psutil.virtual_memory().total - psutil.virtual_memory().available) / (1024 ** 3)
-    ram_total = round(psutil.virtual_memory().total / (1024 ** 3))
+    ram_used = (mem.total - mem.available) / (1024 ** 3)
+    ram_total = round(mem.total / (1024 ** 3))
 
     print_stats()
 
-    # cpu_rpm = getCpuRpm()
 
 def low_frequency_tasks():
     logging.debug("low_frequency_tasks()")
+
     global disk
-    global disk_free_gb, disk_total_gb
+    global disk_used_gb, disk_total_gb
     global ip_local_address
-    global exec, node, cons
+
     disk = psutil.disk_usage("/")
-    disk_free_gb = disk.used / (1024 ** 3)
+    disk_used_gb = disk.used / (1024 ** 3)
     disk_total_gb = round(disk.total / (1024 ** 3), 0)
-    #disk_free_tb = disk.used / 1024 / 1024 / 1024 / 1024
     ip_local_address = get_ip_address()
+
 
 def value_to_hex_color_cpu_usage(value):
     if not (0 <= value <= 100):
         return C_BG
 
-    # Definition of Colors in RGB Format
     green = (0, 255, 0)
     yellow = (255, 255, 0)
     red = (255, 0, 0)
 
     if value <= 50:
-        # Interpolacja między zielonym a żółtym
         ratio = value / 50
         r = int(green[0] + ratio * (yellow[0] - green[0]))
         g = int(green[1] + ratio * (yellow[1] - green[1]))
         b = int(green[2] + ratio * (yellow[2] - green[2]))
     else:
-        # Interpolacja między żółtym a czerwonym
         ratio = (value - 50) / 50
         r = int(yellow[0] + ratio * (red[0] - yellow[0]))
         g = int(yellow[1] + ratio * (red[1] - yellow[1]))
@@ -388,23 +436,21 @@ def value_to_hex_color_cpu_usage(value):
 
     return f'#{r:02x}{g:02x}{b:02x}'
 
+
 def value_to_hex_color_cpu_usage_400(value):
     if not (0 <= value <= 400):
         return C_BG
 
-    # Definition of Colors in RGB Format
     green = (0, 255, 0)
     yellow = (255, 255, 0)
     red = (255, 0, 0)
 
     if value <= 200:
-        # Interpolacja między zielonym a żółtym
         ratio = value / 200
         r = int(green[0] + ratio * (yellow[0] - green[0]))
         g = int(green[1] + ratio * (yellow[1] - green[1]))
         b = int(green[2] + ratio * (yellow[2] - green[2]))
     else:
-        # Interpolacja między żółtym a czerwonym
         ratio = (value - 200) / 200
         r = int(yellow[0] + ratio * (red[0] - yellow[0]))
         g = int(yellow[1] + ratio * (red[1] - yellow[1]))
@@ -412,18 +458,15 @@ def value_to_hex_color_cpu_usage_400(value):
 
     return f'#{r:02x}{g:02x}{b:02x}'
 
+
 def get_hostname():
-    hostname = socket.gethostname()
-    return hostname
+    return socket.gethostname()
+
 
 def get_ip_address():
-    """
-    Get the local IP address, prioritizing Ethernet over WiFi.
-
-    Returns:
-        str: The local IP address or None if no IP address is found.
-    """
+    """Get the local IP address, prioritizing Ethernet over Wi-Fi."""
     interfaces = ['eth0', 'wlan0']
+
     for interface in interfaces:
         try:
             addresses = netifaces.ifaddresses(interface)
@@ -436,15 +479,12 @@ def get_ip_address():
                     return ip_address
         except ValueError:
             continue
+
     return None
 
-def is_raspberry_pi():
-    """
-    Checks if the script is running on a Raspberry Pi by examining the contents of /proc/cpuinfo.
 
-    Returns:
-        bool: True if running on Raspberry Pi, False otherwise.
-    """
+def is_raspberry_pi():
+    """Check whether the script is running on a Raspberry Pi."""
     try:
         with open('/proc/cpuinfo', 'r') as f:
             cpuinfo = f.read()
@@ -452,53 +492,38 @@ def is_raspberry_pi():
                 return True
     except FileNotFoundError:
         return False
+
     return False
+
 
 def is_spi_enabled():
-    """
-    Checks if SPI is enabled on Raspberry Pi by looking for SPI devices in /dev.
+    """Check whether an SPI device is available."""
+    spi_devices = [
+        "/dev/spidev0.0",
+        "/dev/spidev0.1",
+        "/dev/spidev1.0",
+        "/dev/spidev1.1"
+    ]
 
-    Returns:
-        bool: True if SPI devices are found, False otherwise.
-    """
-    spi_devices = ["/dev/spidev0.0", "/dev/spidev0.1", "/dev/spidev1.0", "/dev/spidev1.1"]
-    for device in spi_devices:
-        if os.path.exists(device):
-            return True
-    return False
+    return any(os.path.exists(device) for device in spi_devices)
+
 
 def is_spi_enabled_config():
-    """
-    Checks if SPI is enabled on Raspberry Pi by reading the config.txt file.
-
-    Returns:
-        bool: True if SPI is enabled, False otherwise.
-    """
+    """Check whether SPI is enabled in Raspberry Pi config.txt."""
     try:
         with open('/boot/firmware/config.txt', 'r') as f:
             config = f.read()
-            if 'dtparam=spi=on' in config:
-                return True
+            return 'dtparam=spi=on' in config
     except FileNotFoundError:
         return False
-    return False
+
 
 def check_python_version():
-    """
-    Checks if the current Python version is greater than 3.8.
-
-    Returns:
-        bool: True if the current Python version is greater than 3.8, False otherwise.
-    """
+    """Check whether the current Python version is greater than 3.8."""
     required_version = (3, 8)
     current_version = sys.version_info[:3]
+    return current_version > required_version
 
-    if current_version > required_version:
-        return True
-    return False
-
-def pivccu3_info():
-    logging.info("hier")
 
 if __name__ == '__main__':
     if check_python_version():
@@ -514,4 +539,3 @@ if __name__ == '__main__':
     else:
         logging.error("Python version is not greater than 3.8")
         sys.exit("Python version is not greater than 3.8")
-

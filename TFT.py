@@ -11,22 +11,17 @@ from lxml import etree
 from lcd import LCD_2inch
 from PIL import Image, ImageDraw, ImageFont
 
-# Choose how to display CPU usage percentages
 SHOW_PER_CORE = False
-# False = [0 - 100%]
-# True  = [0 - 400%]
 
-# Raspberry Pi LCD pin configuration:
-# to be done in lcdconfig.py
 disp = None
 
 xml_rpc_token = 'NNXkXnaGVXpFDLgz'
+PIVCCU_FALLBACK_IP = '192.168.2.155'
 
-# Text colors
-C_BG = '#00129A'  # LCD background
-C_T1 = '#FFFFFF'  # main text
-C_T2 = '#c9c9c9'  # secondary text
-C_T3 = '#c9c9c9'  # bottom text
+C_BG = '#00129A'
+C_T1 = '#FFFFFF'
+C_T2 = '#c9c9c9'
+C_T3 = '#c9c9c9'
 
 logging.basicConfig(
     format='%(asctime)s %(levelname)-8s %(message)s',
@@ -57,6 +52,14 @@ def get_pivccu_status():
     pivccu_ip = os.popen(
         "pivccu-info | grep ^IP | cut -d\":\" -f2 | tr -d ' '"
     ).read().strip()
+
+    if not pivccu_ip:
+        pivccu_ip = PIVCCU_FALLBACK_IP
+        logging.warning(
+            "Could not determine piVCCU IP from pivccu-info; using fallback IP %s",
+            pivccu_ip
+        )
+
     pivccu_version = os.popen(
         "pivccu-info | grep version | cut -d\":\" -f2 | tr -d ' '"
     ).read().strip()
@@ -71,7 +74,6 @@ def get_pivccu_status():
 
 
 def checkIfProcessRunning(processName):
-    """Check if any running process contains the given process name."""
     for proc in psutil.process_iter():
         try:
             if processName.lower() in proc.name().lower():
@@ -82,12 +84,9 @@ def checkIfProcessRunning(processName):
 
 
 def clear_screen():
-    """Clear the screen and shut down the display cleanly."""
     global disp
-
     if disp is None:
         return
-
     empty_image = Image.new('RGB', (disp.width, disp.height), color=(0, 0, 0))
     disp.ShowImage(empty_image)
     disp.bl_DutyCycle(0)
@@ -132,7 +131,7 @@ def main():
     disp = LCD_2inch.LCD_2inch()
     disp.Init()
     disp.clear()
-    disp.bl_DutyCycle(100)  # ToDo: Fix hardware PWM on Rpi 5
+    disp.bl_DutyCycle(100)
 
     Font1 = ImageFont.truetype("./font/JetBrainsMono-Medium.ttf", 35)
     Font2 = ImageFont.truetype("./font/JetBrainsMono-Medium.ttf", 25)
@@ -151,7 +150,7 @@ def main():
 
         while True:
             try:
-                high_frequency_tasks()  # every second
+                high_frequency_tasks()
 
                 if skip % 10 == 0:
                     medium_frequency_tasks()
@@ -160,8 +159,6 @@ def main():
                     low_frequency_tasks()
                     pivccu_active, pivccu_version, pivccu_messages = get_pivccu_status()
 
-                # The LCD driver exposes portrait dimensions. The dashboard is rendered
-                # in landscape orientation, therefore width and height are swapped here.
                 screen_width = disp.height
                 screen_height = disp.width
 
@@ -174,8 +171,6 @@ def main():
                 cpu_x = cell_width * 0.5
                 ram_x = cell_width * 1.5
                 hdd_x = cell_width * 2.5
-
-                row1_center_y = cell_height * 0.5
                 row2_center_y = cell_height * 1.5
 
                 title_y = cell_height * 0.12
@@ -184,29 +179,10 @@ def main():
                 percent_offset_x = cell_width * 0.26
                 percent_offset_y = cell_height * 0.06
 
-                # Draw vertical lines
-                draw.line(
-                    [(cell_width, 0), (cell_width, screen_height)],
-                    fill="BLACK",
-                    width=2
-                )
-                draw.line(
-                    [(cell_width * 2, 0), (cell_width * 2, screen_height - cell_height)],
-                    fill="BLACK",
-                    width=2
-                )
-
-                # Draw horizontal lines
-                draw.line(
-                    [(0, cell_height), (screen_width, cell_height)],
-                    fill="BLACK",
-                    width=2
-                )
-                draw.line(
-                    [(0, cell_height * 2), (screen_width, cell_height * 2)],
-                    fill="BLACK",
-                    width=2
-                )
+                draw.line([(cell_width, 0), (cell_width, screen_height)], fill="BLACK", width=2)
+                draw.line([(cell_width * 2, 0), (cell_width * 2, screen_height - cell_height)], fill="BLACK", width=2)
+                draw.line([(0, cell_height), (screen_width, cell_height)], fill="BLACK", width=2)
+                draw.line([(0, cell_height * 2), (screen_width, cell_height * 2)], fill="BLACK", width=2)
 
                 # CPU
                 draw.text((cpu_x, title_y), 'CPU', fill=C_T2, font=Font2, anchor="mm")
@@ -228,10 +204,7 @@ def main():
                     )
                     draw.text(
                         (cpu_x + percent_offset_x, value_y + percent_offset_y),
-                        '%',
-                        fill=C_T2,
-                        font=Font2,
-                        anchor="mm"
+                        '%', fill=C_T2, font=Font2, anchor="mm"
                     )
 
                 draw.text(
@@ -245,22 +218,19 @@ def main():
                 # piVCCU
                 draw.text(
                     (cpu_x, row2_center_y - cell_height * 0.36),
-                    'piVCCU',
-                    fill=C_T2,
-                    font=Font2,
-                    anchor="mm"
+                    'piVCCU', fill=C_T2, font=Font2, anchor="mm"
                 )
                 if pivccu_active:
                     message_text = 'Err:?' if pivccu_messages < 0 else f'Err:{pivccu_messages}'
                     draw.text(
-                        (cpu_x, row2_center_y),
+                        (cpu_x, row2_center_y - cell_height * 0.02),
                         message_text,
                         fill="#FF0000",
                         font=Font3,
                         anchor="mm"
                     )
                     draw.text(
-                        (cpu_x, row2_center_y + cell_height * 0.50),
+                        (cpu_x, row2_center_y + cell_height * 0.30),
                         f'V:{pivccu_version}',
                         fill=C_T2,
                         font=Font4,
@@ -269,14 +239,8 @@ def main():
                 else:
                     draw.text(
                         (cpu_x, row2_center_y),
-                        'OFFLINE',
-                        fill="#FF0000",
-                        font=Font3,
-                        anchor="mm"
+                        'OFFLINE', fill="#FF0000", font=Font3, anchor="mm"
                     )
-
-                # Pi-hole placeholder. pihole_active is already detected and can be
-                # rendered in one of the remaining cells in a later layout step.
 
                 # RAM
                 draw.text((ram_x, title_y), 'RAM', fill=C_T2, font=Font2, anchor="mm")
@@ -289,10 +253,7 @@ def main():
                 )
                 draw.text(
                     (ram_x + percent_offset_x, value_y + percent_offset_y),
-                    '%',
-                    fill=C_T2,
-                    font=Font2,
-                    anchor="mm"
+                    '%', fill=C_T2, font=Font2, anchor="mm"
                 )
                 draw.text(
                     (ram_x, detail_y),
@@ -313,10 +274,7 @@ def main():
                 )
                 draw.text(
                     (hdd_x + percent_offset_x, value_y + percent_offset_y),
-                    '%',
-                    fill=C_T2,
-                    font=Font2,
-                    anchor="mm"
+                    '%', fill=C_T2, font=Font2, anchor="mm"
                 )
                 draw.text(
                     (hdd_x, detail_y),
@@ -327,7 +285,6 @@ def main():
                 )
 
                 disp.ShowImage(image1)
-
                 skip += 1
 
                 time.sleep(max(0, next_time - time.time()))
@@ -361,7 +318,6 @@ def print_stats():
 
 
 def get_cpu_temperature():
-    """Retrieve the current CPU temperature using psutil."""
     temps = psutil.sensors_temperatures()
     if not temps:
         logging.error("sensors_temperatures not supported")
@@ -375,7 +331,6 @@ def get_cpu_temperature():
 
 
 def high_frequency_tasks():
-    logging.debug("high_frequency_tasks()")
     global cpu_percent
     global cpu_temp
 
@@ -388,8 +343,6 @@ def high_frequency_tasks():
 
 
 def medium_frequency_tasks():
-    logging.debug("medium_frequency_tasks()")
-
     global mem
     global swap
     global ram_used, ram_total
@@ -403,8 +356,6 @@ def medium_frequency_tasks():
 
 
 def low_frequency_tasks():
-    logging.debug("low_frequency_tasks()")
-
     global disk
     global disk_used_gb, disk_total_gb
     global ip_local_address
@@ -464,7 +415,6 @@ def get_hostname():
 
 
 def get_ip_address():
-    """Get the local IP address, prioritizing Ethernet over Wi-Fi."""
     interfaces = ['eth0', 'wlan0']
 
     for interface in interfaces:
@@ -484,42 +434,32 @@ def get_ip_address():
 
 
 def is_raspberry_pi():
-    """Check whether the script is running on a Raspberry Pi."""
     try:
         with open('/proc/cpuinfo', 'r') as f:
-            cpuinfo = f.read()
-            if 'Raspberry Pi' in cpuinfo:
-                return True
+            return 'Raspberry Pi' in f.read()
     except FileNotFoundError:
         return False
 
-    return False
-
 
 def is_spi_enabled():
-    """Check whether an SPI device is available."""
     spi_devices = [
         "/dev/spidev0.0",
         "/dev/spidev0.1",
         "/dev/spidev1.0",
         "/dev/spidev1.1"
     ]
-
     return any(os.path.exists(device) for device in spi_devices)
 
 
 def is_spi_enabled_config():
-    """Check whether SPI is enabled in Raspberry Pi config.txt."""
     try:
         with open('/boot/firmware/config.txt', 'r') as f:
-            config = f.read()
-            return 'dtparam=spi=on' in config
+            return 'dtparam=spi=on' in f.read()
     except FileNotFoundError:
         return False
 
 
 def check_python_version():
-    """Check whether the current Python version is greater than 3.8."""
     required_version = (3, 8)
     current_version = sys.version_info[:3]
     return current_version > required_version

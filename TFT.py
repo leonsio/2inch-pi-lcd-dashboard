@@ -11,17 +11,34 @@ from lxml import etree
 from lcd import LCD_2inch
 from PIL import Image, ImageDraw, ImageFont
 
-SHOW_PER_CORE = False
+try:
+    from config import (
+        SHOW_PER_CORE,
+        REQUEST_TIMEOUT,
+        DISPLAY_BACKLIGHT,
+        PIVCCU_FALLBACK_IP,
+        XML_RPC_TOKEN,
+        HOME_ASSISTANT_URL,
+        HOME_ASSISTANT_TOKEN,
+        ADGUARD_URL,
+        ADGUARD_USERNAME,
+        ADGUARD_PASSWORD,
+        C_BG,
+        C_T1,
+        C_T2,
+        C_T3,
+        C_OK,
+        C_ERROR,
+    )
+except ImportError as error:
+    print(
+        "Missing config.py. Copy config.example.py to config.py and enter your local values.",
+        file=sys.stderr,
+    )
+    raise SystemExit(1) from error
+
 
 disp = None
-
-xml_rpc_token = 'NNXkXnaGVXpFDLgz'
-PIVCCU_FALLBACK_IP = '192.168.2.155'
-
-C_BG = '#00129A'
-C_T1 = '#000000'
-C_T2 = '#c9c9c9'
-C_T3 = '#c9c9c9'
 
 logging.basicConfig(
     format='%(asctime)s %(levelname)-8s %(message)s',
@@ -34,9 +51,9 @@ def get_pivccu3_system_notification(pivccu_ip):
     """Return the number of piVCCU system notifications."""
     pivccu_xmlrpc_url = (
         f"http://{pivccu_ip.strip()}"
-        f"/addons/xmlapi/systemNotification.cgi?sid={xml_rpc_token}"
+        f"/addons/xmlapi/systemNotification.cgi?sid={XML_RPC_TOKEN}"
     )
-    response = requests.get(pivccu_xmlrpc_url, timeout=5)
+    response = requests.get(pivccu_xmlrpc_url, timeout=REQUEST_TIMEOUT)
     response.raise_for_status()
     tree = etree.fromstring(response.content)
     return len(tree.xpath(".//notification"))
@@ -73,14 +90,73 @@ def get_pivccu_status():
     return True, pivccu_version, pivccu_messages
 
 
-def checkIfProcessRunning(processName):
-    for proc in psutil.process_iter():
-        try:
-            if processName.lower() in proc.name().lower():
-                return True
-        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
-            pass
-    return False
+def get_home_assistant_status():
+    """Return whether Home Assistant is reachable and its version."""
+    url = f"{HOME_ASSISTANT_URL.rstrip('/')}/api/config"
+    headers = {
+        'Authorization': f'Bearer {HOME_ASSISTANT_TOKEN}',
+        'Content-Type': 'application/json',
+    }
+
+    try:
+        response = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
+        if response.status_code in (401, 403):
+            return True, 'AUTH'
+        response.raise_for_status()
+        data = response.json()
+        return True, str(data.get('version') or '?')
+    except requests.RequestException:
+        logging.exception("Failed to reach Home Assistant")
+        return False, ''
+    except ValueError:
+        logging.exception("Invalid JSON response from Home Assistant")
+        return True, '?'
+
+
+def get_adguard_status():
+    """Return AdGuard Home reachability, protection state and blocked percentage."""
+    base_url = ADGUARD_URL.rstrip('/')
+    auth = None
+    if ADGUARD_USERNAME or ADGUARD_PASSWORD:
+        auth = (ADGUARD_USERNAME, ADGUARD_PASSWORD)
+
+    try:
+        status_response = requests.get(
+            f"{base_url}/control/status",
+            auth=auth,
+            timeout=REQUEST_TIMEOUT,
+        )
+
+        if status_response.status_code in (401, 403):
+            return True, None, None, 'AUTH'
+
+        status_response.raise_for_status()
+        status_data = status_response.json()
+        protection_enabled = bool(status_data.get('protection_enabled', False))
+
+        stats_response = requests.get(
+            f"{base_url}/control/stats",
+            auth=auth,
+            timeout=REQUEST_TIMEOUT,
+        )
+
+        if stats_response.status_code in (401, 403):
+            return True, protection_enabled, None, 'AUTH'
+
+        stats_response.raise_for_status()
+        stats_data = stats_response.json()
+        dns_queries = int(stats_data.get('num_dns_queries') or 0)
+        blocked_queries = int(stats_data.get('num_blocked_filtering') or 0)
+        blocked_percent = (blocked_queries / dns_queries * 100.0) if dns_queries else 0.0
+
+        return True, protection_enabled, blocked_percent, ''
+
+    except requests.RequestException:
+        logging.exception("Failed to reach AdGuard Home")
+        return False, None, None, ''
+    except (ValueError, TypeError):
+        logging.exception("Invalid response from AdGuard Home")
+        return True, None, None, 'API'
 
 
 def clear_screen():
@@ -105,13 +181,8 @@ signal.signal(signal.SIGTERM, handle_shutdown_signal)
 
 def main():
     pivccu_active, pivccu_version, pivccu_messages = get_pivccu_status()
-
-    if checkIfProcessRunning('pihole-FTL'):
-        pihole_active = True
-        logging.info('Pi-hole is running')
-    else:
-        pihole_active = False
-        logging.info('Pi-hole is offline')
+    ha_online, ha_version = get_home_assistant_status()
+    adguard_online, adguard_protection, adguard_blocked_percent, adguard_detail = get_adguard_status()
 
     logging.info('Raspberry Pi Hardware Monitor Start')
 
@@ -131,7 +202,7 @@ def main():
     disp = LCD_2inch.LCD_2inch()
     disp.Init()
     disp.clear()
-    disp.bl_DutyCycle(100)
+    disp.bl_DutyCycle(DISPLAY_BACKLIGHT)
 
     Font1 = ImageFont.truetype("./font/JetBrainsMono-Medium.ttf", 35)
     Font2 = ImageFont.truetype("./font/JetBrainsMono-Medium.ttf", 25)
@@ -158,6 +229,15 @@ def main():
                 if skip % 30 == 0:
                     low_frequency_tasks()
                     pivccu_active, pivccu_version, pivccu_messages = get_pivccu_status()
+                    ha_online, ha_version = get_home_assistant_status()
+                    adguard_online, adguard_protection, adguard_blocked_percent, adguard_detail = get_adguard_status()
+
+                    print(
+                        f'DEBUG SERVICES -> HA online={ha_online}, version={ha_version!r}; '
+                        f'AdGuard online={adguard_online}, protection={adguard_protection}, '
+                        f'blocked={adguard_blocked_percent!r}, detail={adguard_detail!r}',
+                        flush=True
+                    )
 
                 screen_width = disp.height
                 screen_height = disp.width
@@ -216,7 +296,7 @@ def main():
                     anchor="mm"
                 )
 
-                # piVCCU
+                # piVCCU - middle left
                 draw.text(
                     (cpu_x, row2_center_y - cell_height * 0.36),
                     'piVCCU', fill=C_T2, font=Font2, anchor="mm"
@@ -226,7 +306,7 @@ def main():
                     draw.text(
                         (cpu_x, row2_center_y - cell_height * 0.02),
                         message_text,
-                        fill="#FF0000",
+                        fill=C_ERROR,
                         font=Font3,
                         anchor="mm"
                     )
@@ -240,7 +320,57 @@ def main():
                 else:
                     draw.text(
                         (cpu_x, row2_center_y),
-                        'OFFLINE', fill="#FF0000", font=Font3, anchor="mm"
+                        'OFFLINE', fill=C_ERROR, font=Font3, anchor="mm"
+                    )
+
+                # Home Assistant - middle center
+                draw.text(
+                    (ram_x, row2_center_y - cell_height * 0.36),
+                    'HOME ASST', fill=C_T2, font=Font4, anchor="mm"
+                )
+                draw.text(
+                    (ram_x, row2_center_y - cell_height * 0.02),
+                    'ONLINE' if ha_online else 'OFFLINE',
+                    fill=C_OK if ha_online else C_ERROR,
+                    font=Font3,
+                    anchor="mm"
+                )
+                if ha_online:
+                    draw.text(
+                        (ram_x, row2_center_y + cell_height * 0.30),
+                        f'V:{ha_version}',
+                        fill=C_T1,
+                        font=Font4,
+                        anchor="mm"
+                    )
+
+                # AdGuard Home - middle right
+                draw.text(
+                    (hdd_x, row2_center_y - cell_height * 0.36),
+                    'ADGUARD', fill=C_T2, font=Font4, anchor="mm"
+                )
+                draw.text(
+                    (hdd_x, row2_center_y - cell_height * 0.02),
+                    'ONLINE' if adguard_online else 'OFFLINE',
+                    fill=C_OK if adguard_online else C_ERROR,
+                    font=Font3,
+                    anchor="mm"
+                )
+                if adguard_online:
+                    if adguard_detail:
+                        adguard_text = adguard_detail
+                    elif adguard_protection is False:
+                        adguard_text = 'PROT OFF'
+                    elif adguard_blocked_percent is not None:
+                        adguard_text = f'BLOCK {adguard_blocked_percent:.1f}%'
+                    else:
+                        adguard_text = 'ONLINE'
+                    draw.text(
+                        (hdd_x, row2_center_y + cell_height * 0.30),
+                        adguard_text,
+                        fill=C_T1,
+                        font=Font4,
+                        anchor="mm"
                     )
 
                 # RAM

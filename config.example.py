@@ -8,41 +8,38 @@ SHOW_PER_CORE = False
 REQUEST_TIMEOUT = 5
 DISPLAY_BACKLIGHT = 100
 
-# Three refresh classes. Collectors are executed once immediately at startup.
-FAST_INTERVAL = 1       # CPU, RAM, CPU temperature
-MEDIUM_INTERVAL = 60    # disk, uptime/load, IP, Home Assistant, AdGuard, piVCCU status
-SLOW_INTERVAL = 600     # hostname and mostly static service metadata
+FAST_INTERVAL = 1
+MEDIUM_INTERVAL = 60
+SLOW_INTERVAL = 600
 
-# Logging to STDOUT
-LOG_LEVEL = 'INFO'      # DEBUG, INFO, WARNING, ERROR
+LOG_LEVEL = 'INFO'
 LOG_FAST_VALUES = False
 LOG_MEDIUM_VALUES = True
 LOG_SLOW_VALUES = True
 LOG_LOOP_TIMINGS = True
 LOG_BUTTON_EVENTS = True
 
-# Network interfaces are checked from left to right.
 NETWORK_INTERFACES = ['eth0', 'wlan0']
 
 # -----------------------------------------------------------------------------
 # GPIO navigation buttons
 # -----------------------------------------------------------------------------
-# gpiozero uses BCM GPIO numbering here, not the physical header pin number.
-# Set a value to None to disable that button.
-#
-# Default wiring with BUTTON_PULL_UP = True:
-#   BCM GPIO ---- push button ---- GND
-#
-# If you prefer the circuit from the referenced Raspberry Pi HQ example,
-# where pressing connects the GPIO input to 3.3V, set BUTTON_PULL_UP = False.
-# Then wire the input appropriately for pull-down operation.
+# Master switch. When False:
+#   - GPIO buttons are not initialized
+#   - navigation input is disabled
+#   - no selection frame is displayed
+# When True, configured GPIO buttons enable block navigation.
+BUTTONS_ENABLED = False
+
+# BCM GPIO numbering, not physical header pin numbers.
+# With BUTTON_PULL_UP=True each button is wired: BCM GPIO -> button -> GND.
 GPIO_BUTTON_PREVIOUS = None   # e.g. 5
 GPIO_BUTTON_NEXT = None       # e.g. 6
 GPIO_BUTTON_OK = None         # e.g. 16
 GPIO_BUTTON_BACK = None       # e.g. 20
 
 BUTTON_PULL_UP = True
-BUTTON_BOUNCE_TIME = 0.08     # seconds; software debounce
+BUTTON_BOUNCE_TIME = 0.08
 
 # -----------------------------------------------------------------------------
 # piVCCU / CCU XML API
@@ -56,7 +53,6 @@ XML_RPC_TOKEN = 'YOUR_CCU_XML_API_TOKEN'
 HOME_ASSISTANT_URL = 'http://homeassistant.local:8123'
 HOME_ASSISTANT_TOKEN = 'YOUR_HOME_ASSISTANT_LONG_LIVED_ACCESS_TOKEN'
 
-# AdGuard Home is read through Home Assistant entities, not through a direct API.
 ADGUARD_PROTECTION_ENTITY = 'switch.adguard_home_protection'
 ADGUARD_BLOCKED_RATIO_ENTITY = 'sensor.adguard_home_dns_queries_blocked_ratio'
 
@@ -66,34 +62,18 @@ ADGUARD_BLOCKED_RATIO_ENTITY = 'sensor.adguard_home_dns_queries_blocked_ratio'
 GRID_ROWS = 3
 GRID_COLS = 3
 
-# Button behavior:
-#   PREVIOUS -> previous selectable block
-#   NEXT     -> next selectable block
-#   OK       -> open selected block target_page
-#   BACK     -> return from detail page to originating selection
-#
-# Browsing order is always row-major:
-# row1cell1 -> row1cell2 -> row1cell3 -> row2cell1 -> ... -> row3cell3.
-# Spanning cards (colspan/rowspan) count as one selectable block and the selection
-# frame covers their complete area.
-#
-# A page with navigation='browse' participates in PREVIOUS/NEXT scrolling.
-# A page with navigation='detail' is opened through target_page and is skipped
-# while scrolling through normal pages.
-#
-# Set selectable=False on a block if it should be visible but skipped.
-# Set target_page='page_name' to define what OK opens for a selected block.
-
+# Selection styling is only used while BUTTONS_ENABLED=True.
 SHOW_SELECTION_FRAME = True
 C_SELECTED = '#0066FF'
 SELECTED_BORDER_WIDTH = 4
 SELECTED_INSET = 3
 
 # Available modules:
-#   cpu, ram, hdd, uptime, load
-#   ip, hostname, network
-#   pivccu, home_assistant (or ha), adguard
-
+# cpu, ram, hdd, uptime, load, ip, hostname, network,
+# pivccu, home_assistant (or ha), adguard
+#
+# Browse order is row-major. Spanning cards count once and their complete area
+# is selected. target_page defines the detail page opened with OK.
 PAGES = [
     {
         'name': 'overview',
@@ -113,7 +93,6 @@ PAGES = [
             },
         },
     },
-
     {
         'name': 'status',
         'navigation': 'browse',
@@ -126,7 +105,6 @@ PAGES = [
             'row2cell3': {'module': 'pivccu', 'target_page': 'services_detail'},
         },
     },
-
     {
         'name': 'system_detail',
         'navigation': 'detail',

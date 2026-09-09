@@ -19,9 +19,30 @@ LOG_FAST_VALUES = False
 LOG_MEDIUM_VALUES = True
 LOG_SLOW_VALUES = True
 LOG_LOOP_TIMINGS = True
+LOG_BUTTON_EVENTS = True
 
 # Network interfaces are checked from left to right.
 NETWORK_INTERFACES = ['eth0', 'wlan0']
+
+# -----------------------------------------------------------------------------
+# GPIO navigation buttons
+# -----------------------------------------------------------------------------
+# gpiozero uses BCM GPIO numbering here, not the physical header pin number.
+# Set a value to None to disable that button.
+#
+# Default wiring with BUTTON_PULL_UP = True:
+#   BCM GPIO ---- push button ---- GND
+#
+# If you prefer the circuit from the referenced Raspberry Pi HQ example,
+# where pressing connects the GPIO input to 3.3V, set BUTTON_PULL_UP = False.
+# Then wire the input appropriately for pull-down operation.
+GPIO_BUTTON_PREVIOUS = None   # e.g. 5
+GPIO_BUTTON_NEXT = None       # e.g. 6
+GPIO_BUTTON_OK = None         # e.g. 16
+GPIO_BUTTON_BACK = None       # e.g. 20
+
+BUTTON_PULL_UP = True
+BUTTON_BOUNCE_TIME = 0.08     # seconds; software debounce
 
 # -----------------------------------------------------------------------------
 # piVCCU / CCU XML API
@@ -45,18 +66,18 @@ ADGUARD_BLOCKED_RATIO_ENTITY = 'sensor.adguard_home_dns_queries_blocked_ratio'
 GRID_ROWS = 3
 GRID_COLS = 3
 
-# When GPIO buttons are added, bind them to these dashboard.py functions:
-#   LEFT  -> navigate_previous()
-#   RIGHT -> navigate_next()
-#   OK    -> open_selected()
-#   BACK  -> navigate_back()
+# Button behavior:
+#   PREVIOUS -> previous selectable block
+#   NEXT     -> next selectable block
+#   OK       -> open selected block target_page
+#   BACK     -> return from detail page to originating selection
 #
 # Browsing order is always row-major:
 # row1cell1 -> row1cell2 -> row1cell3 -> row2cell1 -> ... -> row3cell3.
 # Spanning cards (colspan/rowspan) count as one selectable block and the selection
 # frame covers their complete area.
 #
-# A page with navigation='browse' participates in LEFT/RIGHT scrolling.
+# A page with navigation='browse' participates in PREVIOUS/NEXT scrolling.
 # A page with navigation='detail' is opened through target_page and is skipped
 # while scrolling through normal pages.
 #
@@ -93,8 +114,6 @@ PAGES = [
         },
     },
 
-    # A second normal page. Reaching the last block on overview and pressing
-    # RIGHT again moves here and selects its first block. LEFT does the reverse.
     {
         'name': 'status',
         'navigation': 'browse',
@@ -108,8 +127,6 @@ PAGES = [
         },
     },
 
-    # Detail pages are not part of normal LEFT/RIGHT scrolling. OK opens them;
-    # BACK returns exactly to the page and block that opened the detail page.
     {
         'name': 'system_detail',
         'navigation': 'detail',

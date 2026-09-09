@@ -2,7 +2,7 @@
 # config.py is intentionally excluded from Git.
 
 # -----------------------------------------------------------------------------
-# TFT2 scheduler / behavior
+# Dashboard scheduler / behavior
 # -----------------------------------------------------------------------------
 SHOW_PER_CORE = False
 REQUEST_TIMEOUT = 5
@@ -32,63 +32,124 @@ XML_RPC_TOKEN = 'YOUR_CCU_XML_API_TOKEN'
 # -----------------------------------------------------------------------------
 # Home Assistant REST API
 # -----------------------------------------------------------------------------
-# Example: 'http://192.168.2.10:8123'
 HOME_ASSISTANT_URL = 'http://homeassistant.local:8123'
 HOME_ASSISTANT_TOKEN = 'YOUR_HOME_ASSISTANT_LONG_LIVED_ACCESS_TOKEN'
 
 # AdGuard Home is read through Home Assistant entities, not through a direct API.
-# Check Settings -> Devices & services -> AdGuard Home -> Entities for exact IDs.
 ADGUARD_PROTECTION_ENTITY = 'switch.adguard_home_protection'
 ADGUARD_BLOCKED_RATIO_ENTITY = 'sensor.adguard_home_dns_queries_blocked_ratio'
 
 # -----------------------------------------------------------------------------
-# TFT2 grid / pages
+# Grid / pages / navigation
 # -----------------------------------------------------------------------------
 GRID_ROWS = 3
 GRID_COLS = 3
+
+# When GPIO buttons are added, bind them to these dashboard.py functions:
+#   LEFT  -> navigate_previous()
+#   RIGHT -> navigate_next()
+#   OK    -> open_selected()
+#   BACK  -> navigate_back()
+#
+# Browsing order is always row-major:
+# row1cell1 -> row1cell2 -> row1cell3 -> row2cell1 -> ... -> row3cell3.
+# Spanning cards (colspan/rowspan) count as one selectable block and the selection
+# frame covers their complete area.
+#
+# A page with navigation='browse' participates in LEFT/RIGHT scrolling.
+# A page with navigation='detail' is opened through target_page and is skipped
+# while scrolling through normal pages.
+#
+# Set selectable=False on a block if it should be visible but skipped.
+# Set target_page='page_name' to define what OK opens for a selected block.
+
+SHOW_SELECTION_FRAME = True
+C_SELECTED = '#0066FF'
+SELECTED_BORDER_WIDTH = 4
+SELECTED_INSET = 3
 
 # Available modules:
 #   cpu, ram, hdd, uptime, load
 #   ip, hostname, network
 #   pivccu, home_assistant (or ha), adguard
-#
-# Simple placement:
-#   'row1cell1': 'cpu'
-#
-# Optional horizontal/vertical spanning:
-#   'row3cell2': {'module': 'network', 'colspan': 2}
-#
-# Future buttons only need to call next_page()/previous_page() in TFT2.py.
+
 PAGES = [
     {
         'name': 'overview',
+        'navigation': 'browse',
         'layout': {
-            'row1cell1': 'cpu',
-            'row1cell2': 'ram',
-            'row1cell3': 'hdd',
-            'row2cell1': 'pivccu',
-            'row2cell2': 'home_assistant',
-            'row2cell3': 'adguard',
-            'row3cell1': 'uptime',
-            'row3cell2': {'module': 'network', 'colspan': 2},
+            'row1cell1': {'module': 'cpu', 'target_page': 'system_detail'},
+            'row1cell2': {'module': 'ram', 'target_page': 'system_detail'},
+            'row1cell3': {'module': 'hdd', 'target_page': 'storage_detail'},
+            'row2cell1': {'module': 'pivccu', 'target_page': 'services_detail'},
+            'row2cell2': {'module': 'home_assistant', 'target_page': 'services_detail'},
+            'row2cell3': {'module': 'adguard', 'target_page': 'services_detail'},
+            'row3cell1': {'module': 'uptime', 'target_page': 'system_detail'},
+            'row3cell2': {
+                'module': 'network',
+                'colspan': 2,
+                'target_page': 'network_detail',
+            },
         },
     },
 
-    # Example second page. Enable/change this whenever you want multiple pages.
-    # {
-    #     'name': 'system',
-    #     'layout': {
-    #         'row1cell1': 'cpu',
-    #         'row1cell2': 'load',
-    #         'row1cell3': 'ram',
-    #         'row2cell1': 'hdd',
-    #         'row2cell2': 'ip',
-    #         'row2cell3': 'hostname',
-    #         'row3cell1': 'home_assistant',
-    #         'row3cell2': 'adguard',
-    #         'row3cell3': 'pivccu',
-    #     },
-    # },
+    # A second normal page. Reaching the last block on overview and pressing
+    # RIGHT again moves here and selects its first block. LEFT does the reverse.
+    {
+        'name': 'status',
+        'navigation': 'browse',
+        'layout': {
+            'row1cell1': {'module': 'load', 'target_page': 'system_detail'},
+            'row1cell2': {'module': 'ip', 'target_page': 'network_detail'},
+            'row1cell3': {'module': 'hostname', 'target_page': 'network_detail'},
+            'row2cell1': {'module': 'home_assistant', 'target_page': 'services_detail'},
+            'row2cell2': {'module': 'adguard', 'target_page': 'services_detail'},
+            'row2cell3': {'module': 'pivccu', 'target_page': 'services_detail'},
+        },
+    },
+
+    # Detail pages are not part of normal LEFT/RIGHT scrolling. OK opens them;
+    # BACK returns exactly to the page and block that opened the detail page.
+    {
+        'name': 'system_detail',
+        'navigation': 'detail',
+        'layout': {
+            'row1cell1': 'cpu',
+            'row1cell2': 'ram',
+            'row1cell3': 'load',
+            'row2cell1': 'uptime',
+            'row2cell2': {'module': 'hostname', 'colspan': 2},
+        },
+    },
+    {
+        'name': 'storage_detail',
+        'navigation': 'detail',
+        'layout': {
+            'row1cell1': {'module': 'hdd', 'colspan': 3},
+            'row2cell1': 'uptime',
+            'row2cell2': {'module': 'hostname', 'colspan': 2},
+        },
+    },
+    {
+        'name': 'network_detail',
+        'navigation': 'detail',
+        'layout': {
+            'row1cell1': {'module': 'network', 'colspan': 3},
+            'row2cell1': {'module': 'ip', 'colspan': 2},
+            'row2cell3': 'hostname',
+        },
+    },
+    {
+        'name': 'services_detail',
+        'navigation': 'detail',
+        'layout': {
+            'row1cell1': 'home_assistant',
+            'row1cell2': 'adguard',
+            'row1cell3': 'pivccu',
+            'row2cell1': {'module': 'network', 'colspan': 2},
+            'row2cell3': 'uptime',
+        },
+    },
 ]
 
 # -----------------------------------------------------------------------------

@@ -1,8 +1,8 @@
 """Modular Raspberry Pi LCD dashboard controller.
 
-Scheduling, rendering, and data collection are separated. The page layout is
-configured in config.py and can later be switched by GPIO buttons without
-changing the collectors or card renderers.
+Scheduling, rendering, data collection, and navigation are separated. GPIO
+buttons can later be connected to the four navigation functions without
+changing collectors, modules, or page layouts.
 """
 
 import logging
@@ -14,13 +14,15 @@ from lcd import LCD_2inch
 
 import config as cfg
 from dashboard_modules import CARD_BUILDERS, COLLECTORS
+from dashboard_navigation import DashboardNavigator
 from dashboard_renderer import DashboardRenderer
 
 
 disp = None
 running = True
-current_page = 0
 state = {}
+navigator = None
+render_requested = True
 
 
 def setup_logging():
@@ -78,6 +80,7 @@ def pages():
     if not configured:
         return [{
             "name": "default",
+            "navigation": "browse",
             "layout": {
                 "row1cell1": "cpu",
                 "row1cell2": "ram",
@@ -92,33 +95,64 @@ def pages():
     return configured
 
 
-def set_page(index, logger=None):
-    """Prepared navigation hook for future GPIO buttons."""
-    global current_page
-    all_pages = pages()
-    if not all_pages:
-        current_page = 0
-        return
-    current_page = index % len(all_pages)
-    if logger:
-        logger.info(
-            "Page changed to %s (%d/%d)",
-            all_pages[current_page].get("name", f"page-{current_page + 1}"),
-            current_page + 1,
-            len(all_pages),
-        )
+def _request_render():
+    global render_requested
+    render_requested = True
 
 
+# -----------------------------------------------------------------------------
+# Navigation hooks for future GPIO buttons
+# -----------------------------------------------------------------------------
+# LEFT  -> navigate_previous()
+# RIGHT -> navigate_next()
+# OK    -> open_selected()
+# BACK  -> navigate_back()
+
+
+def navigate_previous():
+    """Select previous block; cross to previous browse page at page start."""
+    if navigator and navigator.move_previous():
+        _request_render()
+        return True
+    return False
+
+
+def navigate_next():
+    """Select next block; cross to next browse page at page end."""
+    if navigator and navigator.move_next():
+        _request_render()
+        return True
+    return False
+
+
+def open_selected():
+    """Open target_page of the selected block."""
+    if navigator and navigator.open_selected():
+        _request_render()
+        return True
+    return False
+
+
+def navigate_back():
+    """Return from a detail page to the originating block selection."""
+    if navigator and navigator.back():
+        _request_render()
+        return True
+    return False
+
+
+# Backward-compatible page helpers. Block navigation should be preferred once
+# buttons are installed.
 def next_page(logger=None):
-    set_page(current_page + 1, logger)
+    return navigate_next()
 
 
 def previous_page(logger=None):
-    set_page(current_page - 1, logger)
+    return navigate_previous()
 
 
 def main():
-    global disp
+    global disp, navigator, render_requested
 
     logger = setup_logging()
     logger.info("Starting modular dashboard")
@@ -143,6 +177,7 @@ def main():
     disp.bl_DutyCycle(int(getattr(cfg, "DISPLAY_BACKLIGHT", 100)))
 
     renderer = DashboardRenderer(disp, cfg, CARD_BUILDERS, logger)
+    navigator = DashboardNavigator(pages(), logger)
 
     # Populate every data class immediately at startup.
     run_collectors("slow", logger)
@@ -154,41 +189,54 @@ def main():
         "Configured pages: %s",
         ", ".join(page.get("name", f"page-{i + 1}") for i, page in enumerate(all_pages)),
     )
+    logger.info(
+        "Navigation prepared: LEFT=previous RIGHT=next OK=open BACK=return"
+    )
 
     next_fast = time.monotonic()
     next_medium = time.monotonic() + medium_interval
     next_slow = time.monotonic() + slow_interval
+    render_requested = True
 
     try:
         while running:
             now = time.monotonic()
-            rendered = False
+            data_changed = False
 
             if now >= next_fast:
                 run_collectors("fast", logger)
                 next_fast = now + fast_interval
-                rendered = True
+                data_changed = True
 
             if now >= next_medium:
                 run_collectors("medium", logger)
                 next_medium = now + medium_interval
-                rendered = True
+                data_changed = True
 
             if now >= next_slow:
                 run_collectors("slow", logger)
                 next_slow = now + slow_interval
-                rendered = True
+                data_changed = True
 
-            if rendered:
-                page_list = pages()
-                page = page_list[current_page % len(page_list)]
+            if data_changed or render_requested:
                 try:
-                    renderer.render_page(page, state)
+                    selected_key = (
+                        navigator.selected_key
+                        if navigator.mode == "browse"
+                        and getattr(cfg, "SHOW_SELECTION_FRAME", True)
+                        else None
+                    )
+                    renderer.render_page(
+                        navigator.current_page,
+                        state,
+                        selected_key=selected_key,
+                    )
+                    render_requested = False
                 except Exception:
                     logger.exception("Display rendering failed")
 
-            # Sleep only until the next fast tick. GPIO callbacks can later coexist
-            # with this loop without a blocking ten-minute sleep.
+            # Frequent short sleeps keep future GPIO callbacks responsive without
+            # creating busy CPU load or blocking for a whole collector interval.
             sleep_for = max(0.01, min(0.1, next_fast - time.monotonic()))
             time.sleep(sleep_for)
 

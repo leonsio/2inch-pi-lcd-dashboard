@@ -1,4 +1,4 @@
-"""Layout and card rendering for TFT2."""
+"""Layout and card rendering for the modular dashboard."""
 
 from PIL import Image, ImageDraw, ImageFont
 
@@ -51,7 +51,7 @@ class DashboardRenderer:
         y1 = y0 + self.cell_height * rowspan
         return x0, y0, x1, y1
 
-    def _draw_card(self, draw, rect, card):
+    def _draw_card(self, draw, rect, card, selected=False):
         x0, y0, x1, y1 = rect
         border = getattr(self.cfg, "C_GRID", "#000000")
         bg = getattr(self.cfg, "C_CELL_BG", "#FFFFFF")
@@ -59,6 +59,16 @@ class DashboardRenderer:
         detail_color = getattr(self.cfg, "C_T2", "#777777")
 
         draw.rectangle((x0, y0, x1, y1), fill=bg, outline=border, width=2)
+
+        if selected:
+            selection_color = getattr(self.cfg, "C_SELECTED", "#0066FF")
+            selection_width = max(2, int(getattr(self.cfg, "SELECTED_BORDER_WIDTH", 4)))
+            inset = max(1, int(getattr(self.cfg, "SELECTED_INSET", 3)))
+            draw.rectangle(
+                (x0 + inset, y0 + inset, x1 - inset, y1 - inset),
+                outline=selection_color,
+                width=selection_width,
+            )
 
         cx = (x0 + x1) / 2
         height = y1 - y0
@@ -76,7 +86,7 @@ class DashboardRenderer:
             draw.text((cx, detail_y), detail, fill=detail_color,
                       font=self.font_detail, anchor="mm")
 
-    def render_page(self, page, state):
+    def render_page(self, page, state, selected_key=None):
         background = getattr(self.cfg, "C_SCREEN_BG", "#FFFFFF")
         image = Image.new("RGB", (self.width, self.height), background)
         draw = ImageDraw.Draw(image)
@@ -92,11 +102,11 @@ class DashboardRenderer:
                 key = f"row{row}cell{col}"
                 raw_slot = layout.get(key)
                 if raw_slot is None:
-                    # Draw empty cell for a consistent grid.
                     self._draw_card(
                         draw,
                         self._slot_geometry(row, col, {"colspan": 1, "rowspan": 1}),
                         {"title": "", "value": "", "detail": "", "status": "normal"},
+                        selected=False,
                     )
                     continue
 
@@ -124,7 +134,7 @@ class DashboardRenderer:
                         }
 
                 rect = self._slot_geometry(row, col, slot)
-                self._draw_card(draw, rect, card)
+                self._draw_card(draw, rect, card, selected=(key == selected_key))
 
                 colspan = int(slot.get("colspan", 1))
                 rowspan = int(slot.get("rowspan", 1))

@@ -61,7 +61,6 @@ def _read_pivccu_notifications(cfg, ip):
 
 def collect_medium(state, cfg, logger):
     """Poll changing service state once per minute."""
-    # Lightweight Home Assistant health check. Version metadata is slow-loop data.
     try:
         response = _ha_get(cfg, "/api/")
         if response.status_code in (401, 403):
@@ -76,7 +75,6 @@ def collect_medium(state, cfg, logger):
         state["ha_auth_error"] = False
         logger.warning("MEDIUM Home Assistant unavailable: %s", error)
 
-    # AdGuard Home via Home Assistant entities.
     state["adguard_online"] = False
     state["adguard_protection"] = None
     state["adguard_blocked_ratio"] = None
@@ -111,7 +109,6 @@ def collect_medium(state, cfg, logger):
     elif state.get("ha_auth_error"):
         state["adguard_detail"] = "AUTH"
 
-    # piVCCU service state + notifications. Version/IP are refreshed in slow loop.
     state["pivccu_online"] = os.system("systemctl is-active --quiet pivccu.service") == 0
     if state["pivccu_online"]:
         try:
@@ -140,7 +137,6 @@ def collect_slow(state, cfg, logger):
     state["pivccu_ip"] = _read_pivccu_ip(cfg)
     state["pivccu_version"] = _read_pivccu_version()
 
-    # Home Assistant version/config metadata changes rarely.
     try:
         response = _ha_get(cfg, "/api/config")
         if response.status_code in (401, 403):
@@ -172,7 +168,7 @@ def card_home_assistant(state):
     else:
         detail = ""
     return {
-        "title": "HOME ASSISTANT",
+        "title": "HOME ASST",
         "value": "ONLINE" if online else "OFFLINE",
         "detail": detail,
         "status": "warn" if state.get("ha_auth_error") else ("ok" if online else "error"),
@@ -184,7 +180,7 @@ def card_adguard(state):
     if not online:
         detail = state.get("adguard_detail") or ""
     elif state.get("adguard_protection") is False:
-        detail = "PROTECTION OFF"
+        detail = "PROT OFF"
     elif state.get("adguard_blocked_ratio") is not None:
         detail = f"BLOCK {state['adguard_blocked_ratio']:.1f}%"
     else:

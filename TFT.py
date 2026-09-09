@@ -19,7 +19,7 @@ xml_rpc_token = 'NNXkXnaGVXpFDLgz'
 PIVCCU_FALLBACK_IP = '192.168.2.155'
 
 C_BG = '#00129A'
-C_T1 = '#FFFFFF'
+C_T1 = '#000000'
 C_T2 = '#c9c9c9'
 C_T3 = '#c9c9c9'
 
@@ -418,6 +418,12 @@ def medium_frequency_tasks():
     uptime_text = format_uptime()
     load_1, load_5, load_15 = os.getloadavg()
 
+    print(
+        f'DEBUG UPTIME/LOAD -> uptime={uptime_text}, '
+        f'load1={load_1:.2f}, load5={load_5:.2f}, load15={load_15:.2f}',
+        flush=True
+    )
+
     print_stats()
 
 
@@ -430,6 +436,11 @@ def low_frequency_tasks():
     disk_used_gb = disk.used / (1024 ** 3)
     disk_total_gb = round(disk.total / (1024 ** 3), 0)
     ip_local_address = get_ip_address()
+
+    print(
+        f'DEBUG NETWORK -> ip={ip_local_address!r}, hostname={hostname!r}',
+        flush=True
+    )
 
 
 def value_to_hex_color_cpu_usage(value):

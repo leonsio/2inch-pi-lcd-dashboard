@@ -11,15 +11,15 @@ PIVCCU_FALLBACK_IP = '192.168.2.155'
 XML_RPC_TOKEN = 'YOUR_CCU_XML_API_TOKEN'
 
 # Home Assistant REST API
-# Example: 'http://192.168.2.10:8123'
+# Example for Home Assistant OS 2026.8+: 'http://192.168.2.10'
+# Example for port 8123: 'http://192.168.2.10:8123'
 HOME_ASSISTANT_URL = 'http://homeassistant.local:8123'
 HOME_ASSISTANT_TOKEN = 'YOUR_HOME_ASSISTANT_LONG_LIVED_ACCESS_TOKEN'
 
-# AdGuard Home API
-# Example: 'http://192.168.2.20:3000'
-ADGUARD_URL = 'http://adguard.local:3000'
-ADGUARD_USERNAME = 'YOUR_ADGUARD_USERNAME'
-ADGUARD_PASSWORD = 'YOUR_ADGUARD_PASSWORD'
+# AdGuard Home entities exposed by the Home Assistant AdGuard integration.
+# Check Settings -> Devices & services -> AdGuard Home -> Entities for your exact IDs.
+ADGUARD_PROTECTION_ENTITY = 'switch.adguard_home_protection'
+ADGUARD_BLOCKED_RATIO_ENTITY = 'sensor.adguard_home_dns_queries_blocked_ratio'
 
 # Display colors
 C_BG = '#00129A'

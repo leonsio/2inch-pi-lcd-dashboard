@@ -172,6 +172,7 @@ def main():
                 ram_x = cell_width * 1.5
                 hdd_x = cell_width * 2.5
                 row2_center_y = cell_height * 1.5
+                row3_center_y = cell_height * 2.5
 
                 title_y = cell_height * 0.12
                 value_y = cell_height * 0.50
@@ -284,6 +285,53 @@ def main():
                     anchor="mm"
                 )
 
+                # Uptime and load - bottom left cell
+                draw.text(
+                    (cpu_x, cell_height * 2 + cell_height * 0.14),
+                    'UPTIME',
+                    fill=C_T2,
+                    font=Font3,
+                    anchor="mm"
+                )
+                draw.text(
+                    (cpu_x, row3_center_y - cell_height * 0.02),
+                    uptime_text,
+                    fill=C_T1,
+                    font=Font3,
+                    anchor="mm"
+                )
+                draw.text(
+                    (cpu_x, row3_center_y + cell_height * 0.31),
+                    f'L:{load_1:.1f}/{load_5:.1f}/{load_15:.1f}',
+                    fill=C_T2,
+                    font=Font4,
+                    anchor="mm"
+                )
+
+                # IP address and hostname - merged bottom-right 2x1 area
+                info_x = cell_width * 2
+                draw.text(
+                    (info_x, cell_height * 2 + cell_height * 0.14),
+                    'IP / HOSTNAME',
+                    fill=C_T2,
+                    font=Font3,
+                    anchor="mm"
+                )
+                draw.text(
+                    (info_x, row3_center_y - cell_height * 0.03),
+                    ip_local_address or 'No IP',
+                    fill=C_T1,
+                    font=Font3,
+                    anchor="mm"
+                )
+                draw.text(
+                    (info_x, row3_center_y + cell_height * 0.31),
+                    hostname,
+                    fill=C_T2,
+                    font=Font4,
+                    anchor="mm"
+                )
+
                 disp.ShowImage(image1)
                 skip += 1
 
@@ -330,6 +378,19 @@ def get_cpu_temperature():
         return 0
 
 
+def format_uptime():
+    uptime_seconds = max(0, int(time.time() - psutil.boot_time()))
+    days, remainder = divmod(uptime_seconds, 86400)
+    hours, remainder = divmod(remainder, 3600)
+    minutes = remainder // 60
+
+    if days > 0:
+        return f'{days}d {hours:02d}h'
+    if hours > 0:
+        return f'{hours}h {minutes:02d}m'
+    return f'{minutes}m'
+
+
 def high_frequency_tasks():
     global cpu_percent
     global cpu_temp
@@ -346,11 +407,16 @@ def medium_frequency_tasks():
     global mem
     global swap
     global ram_used, ram_total
+    global uptime_text
+    global load_1, load_5, load_15
 
     mem = psutil.virtual_memory()
     swap = psutil.swap_memory()
     ram_used = (mem.total - mem.available) / (1024 ** 3)
     ram_total = round(mem.total / (1024 ** 3))
+
+    uptime_text = format_uptime()
+    load_1, load_5, load_15 = os.getloadavg()
 
     print_stats()
 

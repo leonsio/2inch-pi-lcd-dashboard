@@ -60,21 +60,20 @@ def _read_pivccu_notifications(cfg, ip):
 
 
 def collect_medium(state, cfg, logger):
-    """Poll online/service state once per minute."""
-    # Home Assistant basic health + current version.
+    """Poll changing service state once per minute."""
+    # Lightweight Home Assistant health check. Version metadata is slow-loop data.
     try:
-        response = _ha_get(cfg, "/api/config")
+        response = _ha_get(cfg, "/api/")
         if response.status_code in (401, 403):
             state["ha_online"] = True
-            state["ha_version"] = "AUTH"
+            state["ha_auth_error"] = True
         else:
             response.raise_for_status()
-            data = response.json()
             state["ha_online"] = True
-            state["ha_version"] = str(data.get("version") or "?")
+            state["ha_auth_error"] = False
     except Exception as error:
         state["ha_online"] = False
-        state["ha_version"] = ""
+        state["ha_auth_error"] = False
         logger.warning("MEDIUM Home Assistant unavailable: %s", error)
 
     # AdGuard Home via Home Assistant entities.
@@ -83,7 +82,7 @@ def collect_medium(state, cfg, logger):
     state["adguard_blocked_ratio"] = None
     state["adguard_detail"] = ""
 
-    if state.get("ha_online"):
+    if state.get("ha_online") and not state.get("ha_auth_error"):
         try:
             protection_entity = getattr(cfg, "ADGUARD_PROTECTION_ENTITY", "")
             protection, detail = _ha_entity(cfg, protection_entity)
@@ -109,6 +108,8 @@ def collect_medium(state, cfg, logger):
         except Exception as error:
             state["adguard_detail"] = "API"
             logger.warning("MEDIUM AdGuard entity read failed: %s", error)
+    elif state.get("ha_auth_error"):
+        state["adguard_detail"] = "AUTH"
 
     # piVCCU service state + notifications. Version/IP are refreshed in slow loop.
     state["pivccu_online"] = os.system("systemctl is-active --quiet pivccu.service") == 0
@@ -124,9 +125,8 @@ def collect_medium(state, cfg, logger):
 
     if getattr(cfg, "LOG_MEDIUM_VALUES", True):
         logger.info(
-            "MEDIUM services HA=%s v=%s AdGuard=%s protection=%s blocked=%s piVCCU=%s messages=%s",
+            "MEDIUM services HA=%s AdGuard=%s protection=%s blocked=%s piVCCU=%s messages=%s",
             "online" if state.get("ha_online") else "offline",
-            state.get("ha_version") or "-",
             "online" if state.get("adguard_online") else "offline",
             state.get("adguard_protection"),
             state.get("adguard_blocked_ratio"),
@@ -140,9 +140,24 @@ def collect_slow(state, cfg, logger):
     state["pivccu_ip"] = _read_pivccu_ip(cfg)
     state["pivccu_version"] = _read_pivccu_version()
 
+    # Home Assistant version/config metadata changes rarely.
+    try:
+        response = _ha_get(cfg, "/api/config")
+        if response.status_code in (401, 403):
+            state["ha_version"] = "AUTH"
+        else:
+            response.raise_for_status()
+            data = response.json()
+            state["ha_version"] = str(data.get("version") or "?")
+    except Exception as error:
+        if "ha_version" not in state:
+            state["ha_version"] = "?"
+        logger.warning("SLOW Home Assistant metadata read failed: %s", error)
+
     if getattr(cfg, "LOG_SLOW_VALUES", True):
         logger.info(
-            "SLOW services piVCCU_ip=%s piVCCU_version=%s",
+            "SLOW services HA_version=%s piVCCU_ip=%s piVCCU_version=%s",
+            state.get("ha_version") or "-",
             state.get("pivccu_ip") or "-",
             state.get("pivccu_version") or "-",
         )
@@ -150,11 +165,17 @@ def collect_slow(state, cfg, logger):
 
 def card_home_assistant(state):
     online = bool(state.get("ha_online"))
+    if state.get("ha_auth_error"):
+        detail = "AUTH"
+    elif online:
+        detail = f"V {state.get('ha_version', '?')}"
+    else:
+        detail = ""
     return {
         "title": "HOME ASSISTANT",
         "value": "ONLINE" if online else "OFFLINE",
-        "detail": f"V {state.get('ha_version', '?')}" if online else "",
-        "status": "ok" if online else "error",
+        "detail": detail,
+        "status": "warn" if state.get("ha_auth_error") else ("ok" if online else "error"),
     }
 
 

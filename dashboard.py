@@ -1,8 +1,8 @@
 """Modular Raspberry Pi LCD dashboard controller.
 
 Scheduling, rendering, data collection, navigation, and GPIO input are separated.
-Configured GPIO buttons can navigate blocks and open/close detail pages without
-changing collectors, modules, or page layouts.
+GPIO navigation is enabled explicitly through config.py. When disabled, no GPIO
+buttons are initialized and no block selection frame is rendered.
 """
 
 import logging
@@ -25,6 +25,7 @@ state = {}
 navigator = None
 buttons = None
 render_requested = True
+buttons_enabled = False
 
 
 def setup_logging():
@@ -102,45 +103,36 @@ def _request_render():
     render_requested = True
 
 
-# -----------------------------------------------------------------------------
-# Navigation hooks
-# -----------------------------------------------------------------------------
-# LEFT  -> navigate_previous()
-# RIGHT -> navigate_next()
-# OK    -> open_selected()
-# BACK  -> navigate_back()
-
-
 def navigate_previous():
-    if navigator and navigator.move_previous():
+    if buttons_enabled and navigator and navigator.move_previous():
         _request_render()
         return True
     return False
 
 
 def navigate_next():
-    if navigator and navigator.move_next():
+    if buttons_enabled and navigator and navigator.move_next():
         _request_render()
         return True
     return False
 
 
 def open_selected():
-    if navigator and navigator.open_selected():
+    if buttons_enabled and navigator and navigator.open_selected():
         _request_render()
         return True
     return False
 
 
 def navigate_back():
-    if navigator and navigator.back():
+    if buttons_enabled and navigator and navigator.back():
         _request_render()
         return True
     return False
 
 
 def _process_button_actions(logger):
-    if not buttons:
+    if not buttons_enabled or not buttons:
         return
 
     action_handlers = {
@@ -159,7 +151,6 @@ def _process_button_actions(logger):
             logger.info("BUTTON action=%s changed=%s", action, changed)
 
 
-# Backward-compatible page helpers.
 def next_page(logger=None):
     return navigate_next()
 
@@ -169,7 +160,7 @@ def previous_page(logger=None):
 
 
 def main():
-    global disp, navigator, buttons, render_requested
+    global disp, navigator, buttons, render_requested, buttons_enabled
 
     logger = setup_logging()
     logger.info("Starting modular dashboard")
@@ -195,8 +186,17 @@ def main():
 
     renderer = DashboardRenderer(disp, cfg, CARD_BUILDERS, logger)
     navigator = DashboardNavigator(pages(), logger)
-    buttons = DashboardButtons(cfg, logger)
-    buttons.start()
+
+    buttons_enabled = bool(getattr(cfg, "BUTTONS_ENABLED", False))
+    if buttons_enabled:
+        buttons = DashboardButtons(cfg, logger)
+        active = buttons.start()
+        if active:
+            logger.info("Button navigation enabled")
+        else:
+            logger.warning("Button navigation enabled, but no GPIO buttons could be initialized")
+    else:
+        logger.info("Button navigation disabled")
 
     run_collectors("slow", logger)
     run_collectors("medium", logger)
@@ -207,7 +207,8 @@ def main():
         "Configured pages: %s",
         ", ".join(page.get("name", f"page-{i + 1}") for i, page in enumerate(all_pages)),
     )
-    logger.info("Navigation: LEFT=previous RIGHT=next OK=open BACK=return")
+    if buttons_enabled:
+        logger.info("Navigation: PREVIOUS=previous NEXT=next OK=open BACK=return")
 
     next_fast = time.monotonic()
     next_medium = time.monotonic() + medium_interval
@@ -240,7 +241,8 @@ def main():
                 try:
                     selected_key = (
                         navigator.selected_key
-                        if navigator.mode == "browse"
+                        if buttons_enabled
+                        and navigator.mode == "browse"
                         and getattr(cfg, "SHOW_SELECTION_FRAME", True)
                         else None
                     )

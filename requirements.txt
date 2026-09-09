@@ -5,3 +5,5 @@ numpy
 spidev
 gpiozero
 netifaces
+requests
+lxml

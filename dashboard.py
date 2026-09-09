@@ -1,7 +1,7 @@
 """Modular Raspberry Pi LCD dashboard controller.
 
-Scheduling, rendering, data collection, and navigation are separated. GPIO
-buttons can later be connected to the four navigation functions without
+Scheduling, rendering, data collection, navigation, and GPIO input are separated.
+Configured GPIO buttons can navigate blocks and open/close detail pages without
 changing collectors, modules, or page layouts.
 """
 
@@ -13,6 +13,7 @@ import time
 from lcd import LCD_2inch
 
 import config as cfg
+from dashboard_buttons import DashboardButtons
 from dashboard_modules import CARD_BUILDERS, COLLECTORS
 from dashboard_navigation import DashboardNavigator
 from dashboard_renderer import DashboardRenderer
@@ -22,6 +23,7 @@ disp = None
 running = True
 state = {}
 navigator = None
+buttons = None
 render_requested = True
 
 
@@ -101,7 +103,7 @@ def _request_render():
 
 
 # -----------------------------------------------------------------------------
-# Navigation hooks for future GPIO buttons
+# Navigation hooks
 # -----------------------------------------------------------------------------
 # LEFT  -> navigate_previous()
 # RIGHT -> navigate_next()
@@ -110,7 +112,6 @@ def _request_render():
 
 
 def navigate_previous():
-    """Select previous block; cross to previous browse page at page start."""
     if navigator and navigator.move_previous():
         _request_render()
         return True
@@ -118,7 +119,6 @@ def navigate_previous():
 
 
 def navigate_next():
-    """Select next block; cross to next browse page at page end."""
     if navigator and navigator.move_next():
         _request_render()
         return True
@@ -126,7 +126,6 @@ def navigate_next():
 
 
 def open_selected():
-    """Open target_page of the selected block."""
     if navigator and navigator.open_selected():
         _request_render()
         return True
@@ -134,15 +133,33 @@ def open_selected():
 
 
 def navigate_back():
-    """Return from a detail page to the originating block selection."""
     if navigator and navigator.back():
         _request_render()
         return True
     return False
 
 
-# Backward-compatible page helpers. Block navigation should be preferred once
-# buttons are installed.
+def _process_button_actions(logger):
+    if not buttons:
+        return
+
+    action_handlers = {
+        DashboardButtons.ACTION_PREVIOUS: navigate_previous,
+        DashboardButtons.ACTION_NEXT: navigate_next,
+        DashboardButtons.ACTION_OK: open_selected,
+        DashboardButtons.ACTION_BACK: navigate_back,
+    }
+
+    for action in buttons.get_pending():
+        handler = action_handlers.get(action)
+        if not handler:
+            continue
+        changed = handler()
+        if getattr(cfg, "LOG_BUTTON_EVENTS", True):
+            logger.info("BUTTON action=%s changed=%s", action, changed)
+
+
+# Backward-compatible page helpers.
 def next_page(logger=None):
     return navigate_next()
 
@@ -152,7 +169,7 @@ def previous_page(logger=None):
 
 
 def main():
-    global disp, navigator, render_requested
+    global disp, navigator, buttons, render_requested
 
     logger = setup_logging()
     logger.info("Starting modular dashboard")
@@ -178,8 +195,9 @@ def main():
 
     renderer = DashboardRenderer(disp, cfg, CARD_BUILDERS, logger)
     navigator = DashboardNavigator(pages(), logger)
+    buttons = DashboardButtons(cfg, logger)
+    buttons.start()
 
-    # Populate every data class immediately at startup.
     run_collectors("slow", logger)
     run_collectors("medium", logger)
     run_collectors("fast", logger)
@@ -189,9 +207,7 @@ def main():
         "Configured pages: %s",
         ", ".join(page.get("name", f"page-{i + 1}") for i, page in enumerate(all_pages)),
     )
-    logger.info(
-        "Navigation prepared: LEFT=previous RIGHT=next OK=open BACK=return"
-    )
+    logger.info("Navigation: LEFT=previous RIGHT=next OK=open BACK=return")
 
     next_fast = time.monotonic()
     next_medium = time.monotonic() + medium_interval
@@ -202,6 +218,8 @@ def main():
         while running:
             now = time.monotonic()
             data_changed = False
+
+            _process_button_actions(logger)
 
             if now >= next_fast:
                 run_collectors("fast", logger)
@@ -235,12 +253,12 @@ def main():
                 except Exception:
                     logger.exception("Display rendering failed")
 
-            # Frequent short sleeps keep future GPIO callbacks responsive without
-            # creating busy CPU load or blocking for a whole collector interval.
-            sleep_for = max(0.01, min(0.1, next_fast - time.monotonic()))
+            sleep_for = max(0.01, min(0.05, next_fast - time.monotonic()))
             time.sleep(sleep_for)
 
     finally:
+        if buttons:
+            buttons.close()
         logger.info("Dashboard stopped")
         clear_screen()
 

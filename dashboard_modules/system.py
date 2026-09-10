@@ -1,4 +1,4 @@
-"""System metrics for TFT2."""
+"""System metrics and dashboard cards."""
 
 import os
 import time
@@ -98,6 +98,27 @@ def _severity_percent(value):
     return "ok"
 
 
+def _clamp_percent(value):
+    try:
+        return max(0.0, min(100.0, float(value)))
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _ring_percent_card(title, percent):
+    """Create a generic percentage ring card without changing collectors."""
+    percent = _clamp_percent(percent)
+    return {
+        "style": "ring",
+        "title": title,
+        "value": f"{percent:.0f}%",
+        "detail": "",
+        "ratio": percent / 100.0,
+        "color_ratio": percent / 100.0,
+        "status": _severity_percent(percent),
+    }
+
+
 def card_cpu(state):
     temp = state.get("cpu_temp")
     detail = "TEMP ?" if temp is None else f"TEMP {temp:.0f}°C"
@@ -145,10 +166,63 @@ def card_load(state):
     }
 
 
+# -----------------------------------------------------------------------------
+# Optional ring/donut variants. Existing cards above intentionally stay intact.
+# -----------------------------------------------------------------------------
+def card_cpu_ring(state):
+    return _ring_percent_card("CPU", state.get("cpu_percent", 0))
+
+
+def card_ram_ring(state):
+    return _ring_percent_card("RAM", state.get("ram_percent", 0))
+
+
+def card_disk_ring(state):
+    return _ring_percent_card("DISK", state.get("disk_percent", 0))
+
+
+def card_temp_ring(state):
+    temp = state.get("cpu_temp")
+    if temp is None:
+        return {
+            "style": "ring",
+            "title": "TEMP",
+            "value": "?°C",
+            "detail": "",
+            "ring_metric": "temperature",
+            "raw_value": None,
+            "ratio": 0.0,
+            "color_ratio": None,
+            "status": "normal",
+        }
+
+    return {
+        "style": "ring",
+        "title": "TEMP",
+        "value": f"{float(temp):.0f}°C",
+        "detail": "",
+        "ring_metric": "temperature",
+        "raw_value": float(temp),
+        # The renderer calculates the temperature ratio from configurable
+        # TEMP_RING_MIN_C/TEMP_RING_MAX_C values.
+        "ratio": 0.0,
+        "color_ratio": None,
+        "status": "normal",
+    }
+
+
 CARD_BUILDERS = {
+    # Existing classic cards
     "cpu": card_cpu,
     "ram": card_ram,
     "hdd": card_hdd,
     "uptime": card_uptime,
     "load": card_load,
+
+    # New ring cards
+    "cpu_ring": card_cpu_ring,
+    "ram_ring": card_ram_ring,
+    "disk_ring": card_disk_ring,
+    "hdd_ring": card_disk_ring,  # alias for existing HDD naming
+    "temp_ring": card_temp_ring,
 }

@@ -23,7 +23,7 @@ class DashboardRenderer:
         self.font_detail = ImageFont.truetype(font_path, int(getattr(cfg, "FONT_DETAIL", 13)))
         self.font_ring_value = ImageFont.truetype(
             font_path,
-            int(getattr(cfg, "RING_VALUE_FONT", 20)),
+            int(getattr(cfg, "RING_VALUE_FONT", 17)),
         )
         self.font_ring_title = ImageFont.truetype(
             font_path,
@@ -175,8 +175,8 @@ class DashboardRenderer:
 
         width = x1 - x0
         height = y1 - y0
-        padding = max(4, int(getattr(self.cfg, "RING_PADDING", 6)))
-        title_area = max(14, int(getattr(self.cfg, "RING_TITLE_AREA", 17)))
+        padding = max(3, int(getattr(self.cfg, "RING_PADDING", 4)))
+        title_area = max(13, int(getattr(self.cfg, "RING_TITLE_AREA", 15)))
 
         diameter = min(
             width - (2 * padding),
@@ -194,7 +194,7 @@ class DashboardRenderer:
             ring_top + diameter,
         )
 
-        configured_ring_width = max(2, int(getattr(self.cfg, "RING_WIDTH", 7)))
+        configured_ring_width = max(2, int(getattr(self.cfg, "RING_WIDTH", 6)))
         ring_width = min(configured_ring_width, max(2, int(diameter / 4)))
 
         # Full neutral ring = available/free portion.
@@ -209,7 +209,9 @@ class DashboardRenderer:
             value_color = progress_color
 
         # Colored arc = used/load portion. Start at 12 o'clock.
-        if ratio > 0.0:
+        if ratio >= 0.999:
+            draw.ellipse(ring_box, outline=progress_color, width=ring_width)
+        elif ratio > 0.0:
             end_angle = -90 + (360.0 * ratio)
             draw.arc(
                 ring_box,

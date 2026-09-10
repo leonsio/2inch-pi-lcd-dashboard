@@ -92,9 +92,15 @@ SELECTED_INSET = 3
 # A colspan/rowspan block counts as ONE navigation step; its selection frame
 # covers the complete large block.
 #
-# Available modules:
+# Available classic modules:
 # cpu, ram, hdd, uptime, load, ip, hostname, network,
 # pivccu, home_assistant (or ha), adguard
+#
+# Additional ring/donut modules:
+# cpu_ring, ram_ring, disk_ring, hdd_ring, temp_ring
+#
+# hdd_ring is an alias for disk_ring. The classic cpu/ram/hdd modules remain
+# available and can be mixed freely with ring modules on the same page.
 
 # -----------------------------------------------------------------------------
 # SELECTABLE - IMPORTANT
@@ -203,6 +209,48 @@ SELECTED_INSET = 3
 # Do not configure other blocks in cells occupied by its colspan/rowspan.
 
 # -----------------------------------------------------------------------------
+# RING / DONUT MODULE EXAMPLES
+# -----------------------------------------------------------------------------
+# Ring modules use the same collected system data as the classic modules; they
+# do not add extra polling or collector load. The colored arc is the used/load
+# portion, while the neutral ring remainder represents the available portion.
+# The numeric value in the center uses the same dynamically calculated color.
+#
+# Basic usage:
+#   'row1cell1': 'cpu_ring'
+#   'row1cell2': 'ram_ring'
+#   'row1cell3': 'disk_ring'
+#   'row2cell1': 'temp_ring'
+#
+# Ring modules work with navigation options exactly like any other module:
+#   'row1cell1': {
+#       'module': 'cpu_ring',
+#       'target_page': 'system_detail',
+#   }
+#
+# They can also be made informational-only:
+#   'row2cell1': {
+#       'module': 'temp_ring',
+#       'selectable': False,
+#   }
+#
+# Example mixed page using both new and existing styles:
+#   {
+#       'name': 'rings',
+#       'navigation': 'browse',
+#       'layout': {
+#           'row1cell1': 'cpu_ring',
+#           'row1cell2': 'ram_ring',
+#           'row1cell3': 'disk_ring',
+#           'row2cell1': 'temp_ring',
+#           'row2cell2': 'home_assistant',
+#           'row2cell3': 'adguard',
+#           'row3cell1': {'module': 'uptime', 'selectable': False},
+#           'row3cell2': {'module': 'network', 'colspan': 2},
+#       },
+#   }
+
+# -----------------------------------------------------------------------------
 # COMPLETE NAVIGATION EXAMPLE
 # -----------------------------------------------------------------------------
 # In this example the selection order on overview is:
@@ -301,3 +349,27 @@ C_T3 = '#666666'
 C_OK = '#008000'
 C_WARN = '#D08000'
 C_ERROR = '#FF0000'
+
+# -----------------------------------------------------------------------------
+# Ring / donut styling
+# -----------------------------------------------------------------------------
+# The ring is rendered clockwise from the top (12 o'clock).
+# RING_TRACK_COLOR is the unused/available part of the ring.
+RING_TRACK_COLOR = '#D9D9D9'
+RING_WIDTH = 6
+RING_PADDING = 4
+RING_TITLE_AREA = 15
+RING_VALUE_FONT = 17
+RING_TITLE_FONT = 13
+
+# Smooth color gradient for both the used ring segment and center value:
+# low load -> green -> yellow -> red -> high load.
+RING_COLOR_LOW = '#008000'
+RING_COLOR_MID = '#E6C200'
+RING_COLOR_HIGH = '#FF0000'
+RING_COLOR_MIDPOINT = 0.60
+
+# Temperature is converted into a 0..100% ring between these limits.
+# Values below MIN show an empty ring; values at/above MAX show a full ring.
+TEMP_RING_MIN_C = 0
+TEMP_RING_MAX_C = 85

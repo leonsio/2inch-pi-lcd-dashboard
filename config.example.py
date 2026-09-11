@@ -51,10 +51,16 @@ BUTTONS_ENABLED = False
 
 # BCM GPIO numbering, not physical header pin numbers.
 # With BUTTON_PULL_UP=True each button is wired: BCM GPIO -> button -> GND.
-GPIO_BUTTON_PREVIOUS = None   # e.g. 5
-GPIO_BUTTON_NEXT = None       # e.g. 6
-GPIO_BUTTON_OK = None         # e.g. 16
-GPIO_BUTTON_BACK = None       # e.g. 20
+# Current example wiring:
+#   PREVIOUS -> BCM GPIO19 -> physical pin 35
+#   NEXT     -> BCM GPIO26 -> physical pin 37
+#   OK       -> BCM GPIO20 -> physical pin 38
+#   BACK     -> BCM GPIO21 -> physical pin 40
+# All buttons use physical pin 39 (GND) as their common ground.
+GPIO_BUTTON_PREVIOUS = 19
+GPIO_BUTTON_NEXT = 26
+GPIO_BUTTON_OK = 20
+GPIO_BUTTON_BACK = 21
 
 BUTTON_PULL_UP = True
 BUTTON_BOUNCE_TIME = 0.08

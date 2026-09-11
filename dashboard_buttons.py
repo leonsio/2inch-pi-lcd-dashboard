@@ -1,7 +1,7 @@
 """GPIO button input for dashboard navigation.
 
 Uses gpiozero and BCM GPIO numbering. Each configured button posts a navigation
-command to a queue; the dashboard main loop processes commands and performs all
+event to a queue; the dashboard main loop processes events and performs all
 rendering/navigation changes in its own thread.
 """
 
@@ -32,8 +32,12 @@ class DashboardButtons:
             self.logger.warning("Invalid GPIO pin for %s: %r", name, value)
             return None
 
-    def _enqueue(self, action):
-        self.events.put(action)
+    def _enqueue(self, action, config_name, pin):
+        self.events.put({
+            "action": action,
+            "config_name": config_name,
+            "pin": pin,
+        })
 
     def start(self):
         pull_up = bool(getattr(self.cfg, "BUTTON_PULL_UP", True))
@@ -60,11 +64,14 @@ class DashboardButtons:
             used_pins.add(pin)
             try:
                 button = Button(pin, pull_up=pull_up, bounce_time=bounce_time)
-                button.when_pressed = lambda action=action: self._enqueue(action)
+                button.when_pressed = (
+                    lambda action=action, config_name=config_name, pin=pin:
+                    self._enqueue(action, config_name, pin)
+                )
                 self.buttons.append(button)
-                configured.append(f"{action}=GPIO{pin}")
+                configured.append(f"{config_name}=GPIO{pin}")
             except Exception:
-                self.logger.exception("Failed to configure %s on GPIO %d", action, pin)
+                self.logger.exception("Failed to configure %s on GPIO %d", config_name, pin)
 
         if configured:
             wiring = "GPIO->GND" if pull_up else "GPIO->3.3V"
@@ -79,10 +86,10 @@ class DashboardButtons:
         return bool(self.buttons)
 
     def get_pending(self):
-        actions = []
+        events = []
         while not self.events.empty():
-            actions.append(self.events.get_nowait())
-        return actions
+            events.append(self.events.get_nowait())
+        return events
 
     def close(self):
         for button in self.buttons:

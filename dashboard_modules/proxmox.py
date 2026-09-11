@@ -5,7 +5,10 @@ It uses the cluster-wide resources endpoint, so no node name is required and
 it also works when the configured Proxmox endpoint later becomes a cluster.
 """
 
+import warnings
+
 import requests
+from urllib3.exceptions import InsecureRequestWarning
 
 
 STATE_KEYS = (
@@ -38,13 +41,20 @@ def _get(cfg, path, params=None):
     base = str(getattr(cfg, "PROXMOX_URL", "")).strip().rstrip("/")
     timeout = float(getattr(cfg, "REQUEST_TIMEOUT", 5))
     verify_ssl = bool(getattr(cfg, "PROXMOX_VERIFY_SSL", False))
-    return requests.get(
-        f"{base}/api2/json{path}",
-        headers=_headers(cfg),
-        params=params,
-        timeout=timeout,
-        verify=verify_ssl,
-    )
+
+    # Local Proxmox installations commonly use their own/self-signed
+    # certificate. Suppress only urllib3's expected warning when verification
+    # is deliberately disabled in config.py.
+    with warnings.catch_warnings():
+        if not verify_ssl:
+            warnings.simplefilter("ignore", InsecureRequestWarning)
+        return requests.get(
+            f"{base}/api2/json{path}",
+            headers=_headers(cfg),
+            params=params,
+            timeout=timeout,
+            verify=verify_ssl,
+        )
 
 
 def _guest_is_counted(resource, include_lxc):
@@ -166,12 +176,11 @@ def card_proxmox(state):
 
     running = int(state.get("proxmox_running_vms", 0) or 0)
     total = int(state.get("proxmox_total_vms", 0) or 0)
-    version = str(state.get("proxmox_version") or "?")
 
     return {
         "title": "PROXMOX",
         "value": f"{running}/{total} VMs",
-        "detail": f"ONLINE V {version}",
+        "detail": "ONLINE",
         "status": "ok",
     }
 

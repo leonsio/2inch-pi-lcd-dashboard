@@ -21,28 +21,73 @@ class DashboardRenderer:
         self.cell_width = self.width / self.cols
         self.cell_height = self.height / self.rows
 
+        self.font_path = getattr(cfg, "FONT_PATH", "./font/JetBrainsMono-Medium.ttf")
+        self.font_cache = {}
+
+        reference_width = max(1, int(getattr(cfg, "FONT_REFERENCE_WIDTH", 320)))
+        reference_height = max(1, int(getattr(cfg, "FONT_REFERENCE_HEIGHT", 240)))
+        if bool(getattr(cfg, "AUTO_FONT_SCALE", True)):
+            self.font_scale = min(
+                self.width / reference_width,
+                self.height / reference_height,
+            )
+            self.font_scale = max(
+                float(getattr(cfg, "FONT_SCALE_MIN", 0.60)),
+                min(float(getattr(cfg, "FONT_SCALE_MAX", 1.50)), self.font_scale),
+            )
+        else:
+            self.font_scale = 1.0
+
         self.logger.info(
-            "Renderer canvas=%dx%d grid=%dx%d cell=%.1fx%.1f",
+            "Renderer canvas=%dx%d grid=%dx%d cell=%.1fx%.1f font_scale=%.3f",
             self.width,
             self.height,
             self.rows,
             self.cols,
             self.cell_width,
             self.cell_height,
+            self.font_scale,
         )
 
-        font_path = getattr(cfg, "FONT_PATH", "./font/JetBrainsMono-Medium.ttf")
-        self.font_title = ImageFont.truetype(font_path, int(getattr(cfg, "FONT_TITLE", 15)))
-        self.font_value = ImageFont.truetype(font_path, int(getattr(cfg, "FONT_VALUE", 24)))
-        self.font_detail = ImageFont.truetype(font_path, int(getattr(cfg, "FONT_DETAIL", 13)))
-        self.font_ring_value = ImageFont.truetype(
-            font_path,
-            int(getattr(cfg, "RING_VALUE_FONT", 17)),
-        )
-        self.font_ring_title = ImageFont.truetype(
-            font_path,
-            int(getattr(cfg, "RING_TITLE_FONT", 13)),
-        )
+    def _font(self, size):
+        size = max(1, int(round(size)))
+        font = self.font_cache.get(size)
+        if font is None:
+            font = ImageFont.truetype(self.font_path, size)
+            self.font_cache[size] = font
+        return font
+
+    def _scaled_font_size(self, config_name, default):
+        configured = max(1, int(getattr(self.cfg, config_name, default)))
+        return max(1, int(round(configured * self.font_scale)))
+
+    @staticmethod
+    def _text_size(draw, text, font):
+        if not text:
+            return 0, 0
+        left, top, right, bottom = draw.textbbox((0, 0), text, font=font)
+        return right - left, bottom - top
+
+    def _fit_font(self, draw, text, max_size, min_size, max_width, max_height=None):
+        """Return the largest cached font that fits the available rectangle."""
+        text = str(text or "")
+        max_size = max(1, int(round(max_size)))
+        min_size = max(1, min(int(round(min_size)), max_size))
+        max_width = max(1.0, float(max_width))
+        max_height = None if max_height is None else max(1.0, float(max_height))
+
+        if not text:
+            return self._font(max_size)
+
+        for size in range(max_size, min_size - 1, -1):
+            font = self._font(size)
+            text_width, text_height = self._text_size(draw, text, font)
+            if text_width <= max_width and (
+                max_height is None or text_height <= max_height
+            ):
+                return font
+
+        return self._font(min_size)
 
     def _status_color(self, status):
         if status == "ok":
@@ -144,33 +189,68 @@ class DashboardRenderer:
 
         draw.rectangle((x0, y0, x1, y1), fill=bg, outline=border, width=2)
 
-        cx = (x0 + x1) / 2
+        width = x1 - x0
         height = y1 - y0
+        cx = (x0 + x1) / 2
         title_y = y0 + height * 0.18
         value_y = y0 + height * 0.52
         detail_y = y0 + height * 0.83
 
+        text_padding = max(
+            2,
+            int(round(float(getattr(self.cfg, "TEXT_HORIZONTAL_PADDING", 5)) * self.font_scale)),
+        )
+        available_width = max(1, width - (2 * text_padding))
+
+        title = str(card.get("title", ""))
+        value = str(card.get("value", ""))
+        detail = str(card.get("detail", ""))
+
+        title_font = self._fit_font(
+            draw,
+            title,
+            self._scaled_font_size("FONT_TITLE", 15),
+            int(getattr(self.cfg, "FONT_MIN_TITLE", 8)),
+            available_width,
+            height * 0.22,
+        )
+        value_font = self._fit_font(
+            draw,
+            value,
+            self._scaled_font_size("FONT_VALUE", 24),
+            int(getattr(self.cfg, "FONT_MIN_VALUE", 10)),
+            available_width,
+            height * 0.34,
+        )
+        detail_font = self._fit_font(
+            draw,
+            detail,
+            self._scaled_font_size("FONT_DETAIL", 13),
+            int(getattr(self.cfg, "FONT_MIN_DETAIL", 7)),
+            available_width,
+            height * 0.22,
+        )
+
         draw.text(
             (cx, title_y),
-            str(card.get("title", "")),
+            title,
             fill=title_color,
-            font=self.font_title,
+            font=title_font,
             anchor="mm",
         )
         draw.text(
             (cx, value_y),
-            str(card.get("value", "")),
+            value,
             fill=self._status_color(card.get("status", "normal")),
-            font=self.font_value,
+            font=value_font,
             anchor="mm",
         )
-        detail = str(card.get("detail", ""))
         if detail:
             draw.text(
                 (cx, detail_y),
                 detail,
                 fill=detail_color,
-                font=self.font_detail,
+                font=detail_font,
                 anchor="mm",
             )
 
@@ -189,8 +269,8 @@ class DashboardRenderer:
 
         width = x1 - x0
         height = y1 - y0
-        padding = max(3, int(getattr(self.cfg, "RING_PADDING", 4)))
-        title_area = max(13, int(getattr(self.cfg, "RING_TITLE_AREA", 15)))
+        padding = max(3, int(round(float(getattr(self.cfg, "RING_PADDING", 4)) * self.font_scale)))
+        title_area = max(11, int(round(float(getattr(self.cfg, "RING_TITLE_AREA", 15)) * self.font_scale)))
 
         diameter = min(
             width - (2 * padding),
@@ -208,7 +288,10 @@ class DashboardRenderer:
             ring_top + diameter,
         )
 
-        configured_ring_width = max(2, int(getattr(self.cfg, "RING_WIDTH", 6)))
+        configured_ring_width = max(
+            2,
+            int(round(float(getattr(self.cfg, "RING_WIDTH", 6)) * self.font_scale)),
+        )
         ring_width = min(configured_ring_width, max(2, int(diameter / 4)))
 
         # Full neutral ring = available/free portion.
@@ -235,21 +318,42 @@ class DashboardRenderer:
                 width=ring_width,
             )
 
+        value = str(card.get("value", ""))
+        title = str(card.get("title", ""))
+        inner_diameter = max(8, diameter - (2 * ring_width) - 4)
+
+        ring_value_font = self._fit_font(
+            draw,
+            value,
+            self._scaled_font_size("RING_VALUE_FONT", 17),
+            int(getattr(self.cfg, "FONT_MIN_RING_VALUE", 8)),
+            inner_diameter,
+            inner_diameter * 0.55,
+        )
+        ring_title_font = self._fit_font(
+            draw,
+            title,
+            self._scaled_font_size("RING_TITLE_FONT", 13),
+            int(getattr(self.cfg, "FONT_MIN_RING_TITLE", 7)),
+            max(1, width - (2 * padding)),
+            title_area,
+        )
+
         ring_cy = ring_top + diameter / 2
         draw.text(
             (cx, ring_cy),
-            str(card.get("value", "")),
+            value,
             fill=value_color,
-            font=self.font_ring_value,
+            font=ring_value_font,
             anchor="mm",
         )
 
-        title_y = y1 - max(7, title_area / 2)
+        title_y = y1 - max(6, title_area / 2)
         draw.text(
             (cx, title_y),
-            str(card.get("title", "")),
+            title,
             fill=title_color,
-            font=self.font_ring_title,
+            font=ring_title_font,
             anchor="mm",
         )
 

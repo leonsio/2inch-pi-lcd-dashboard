@@ -24,7 +24,7 @@ class LCD_1inch69(lcdconfig.RaspberryPi):
         time.sleep(0.01)
 
     def Init(self):
-        """Initialize dispaly"""
+        """Initialize display"""
         self.module_init()
         self.reset()
 
@@ -107,79 +107,79 @@ class LCD_1inch69(lcdconfig.RaspberryPi):
         self.data(0x00)
 
         self.command(0x21)
-
         self.command(0x11)
-
         time.sleep(0.1)
-
         self.command(0x29)
 
     def SetWindows(self, Xstart, Ystart, Xend, Yend, horizontal=0):
         if horizontal:
-            # set the X coordinates
             self.command(0x2A)
-            self.data(Xstart + 20 >> 8)  # Set the horizontal starting point to the high octet
-            self.data(Xstart + 20 & 0xff)  # Set the horizontal starting point to the low octet
-            self.data(Xend + 20 - 1 >> 8)  # Set the horizontal end to the high octet
-            self.data((Xend + 20 - 1) & 0xff)  # Set the horizontal end to the low octet
-            # set the Y coordinates
+            self.data(Xstart + 20 >> 8)
+            self.data(Xstart + 20 & 0xff)
+            self.data(Xend + 20 - 1 >> 8)
+            self.data((Xend + 20 - 1) & 0xff)
+
             self.command(0x2B)
             self.data(Ystart >> 8)
-            self.data((Ystart & 0xff))
+            self.data(Ystart & 0xff)
             self.data(Yend - 1 >> 8)
             self.data((Yend - 1) & 0xff)
             self.command(0x2C)
         else:
-            # set the X coordinates
             self.command(0x2A)
-            self.data(Xstart >> 8)  # Set the horizontal starting point to the high octet
-            self.data(Xstart & 0xff)  # Set the horizontal starting point to the low octet
-            self.data(Xend - 1 >> 8)  # Set the horizontal end to the high octet
-            self.data((Xend - 1) & 0xff)  # Set the horizontal end to the low octet
-            # set the Y coordinates
+            self.data(Xstart >> 8)
+            self.data(Xstart & 0xff)
+            self.data(Xend - 1 >> 8)
+            self.data((Xend - 1) & 0xff)
+
             self.command(0x2B)
             self.data(Ystart + 20 >> 8)
-            self.data((Ystart + 20 & 0xff))
+            self.data(Ystart + 20 & 0xff)
             self.data(Yend + 20 - 1 >> 8)
             self.data((Yend + 20 - 1) & 0xff)
             self.command(0x2C)
 
     def ShowImage(self, Image):
-        """Set buffer to value of Python Imaging Library image."""
-        """Write display buffer to physical display"""
+        """Write a Pillow image to the physical display."""
         imwidth, imheight = Image.size
+        img = self.np.asarray(Image)
+
         if imwidth == self.height and imheight == self.width:
-            print("Landscape screen")
-            img = self.np.asarray(Image)
+            # Landscape: dashboard renders 280x240 for this 240x280 panel.
             pix = self.np.zeros((self.width, self.height, 2), dtype=self.np.uint8)
-            # RGB888 >> RGB565
-            pix[..., [0]] = self.np.add(self.np.bitwise_and(img[..., [0]], 0xF8), self.np.right_shift(img[..., [1]], 5))
-            pix[..., [1]] = self.np.add(self.np.bitwise_and(self.np.left_shift(img[..., [1]], 3), 0xE0),
-                                        self.np.right_shift(img[..., [2]], 3))
+            pix[..., [0]] = self.np.add(
+                self.np.bitwise_and(img[..., [0]], 0xF8),
+                self.np.right_shift(img[..., [1]], 5),
+            )
+            pix[..., [1]] = self.np.add(
+                self.np.bitwise_and(self.np.left_shift(img[..., [1]], 3), 0xE0),
+                self.np.right_shift(img[..., [2]], 3),
+            )
             pix = pix.flatten().tolist()
 
             self.command(0x36)
             self.data(0x70)
             self.SetWindows(0, 0, self.height, self.width, 1)
-            self.digital_write(self.DC_PIN, True)
-            for i in range(0, len(pix), 4096):
-                self.spi_writebyte(pix[i:i + 4096])
         else:
-            #print("Portrait screen")
-            img = self.np.asarray(Image)
+            # Portrait/native orientation.
             pix = self.np.zeros((imheight, imwidth, 2), dtype=self.np.uint8)
-
-            pix[..., [0]] = self.np.add(self.np.bitwise_and(img[..., [0]], 0xF8), self.np.right_shift(img[..., [1]], 5))
-            pix[..., [1]] = self.np.add(self.np.bitwise_and(self.np.left_shift(img[..., [1]], 3), 0xE0),
-                                        self.np.right_shift(img[..., [2]], 3))
+            pix[..., [0]] = self.np.add(
+                self.np.bitwise_and(img[..., [0]], 0xF8),
+                self.np.right_shift(img[..., [1]], 5),
+            )
+            pix[..., [1]] = self.np.add(
+                self.np.bitwise_and(self.np.left_shift(img[..., [1]], 3), 0xE0),
+                self.np.right_shift(img[..., [2]], 3),
+            )
             pix = pix.flatten().tolist()
 
             self.command(0x36)
             self.data(0x00)
             self.SetWindows(0, 0, self.width, self.height, 0)
-            self.digital_write(self.DC_PIN, True)
+
+        self.digital_write(self.DC_PIN, True)
         for i in range(0, len(pix), 4096):
-            self.spi_writebyte(pix[i: i + 4096])
+            self.spi_writebyte(pix[i:i + 4096])
 
     def clear(self):
         """Clear contents of image buffer"""
@@ -187,5 +187,4 @@ class LCD_1inch69(lcdconfig.RaspberryPi):
         self.SetWindows(0, 0, self.width, self.height)
         self.digital_write(self.DC_PIN, True)
         for i in range(0, len(_buffer), 4096):
-            self.spi_writebyte(_buffer[i: i + 4096])
-
+            self.spi_writebyte(_buffer[i:i + 4096])

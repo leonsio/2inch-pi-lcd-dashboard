@@ -8,6 +8,24 @@ SHOW_PER_CORE = False
 REQUEST_TIMEOUT = 5
 DISPLAY_BACKLIGHT = 100
 
+# -----------------------------------------------------------------------------
+# LCD device
+# -----------------------------------------------------------------------------
+# Select the physical LCD driver. The default keeps existing installations on
+# the current 2-inch display.
+#
+# Supported values:
+#   '2inch'   = LCD_2inch, native 240x320, dashboard landscape 320x240
+#   '1inch69' = LCD_1inch69, native 240x280, dashboard landscape 280x240
+#
+# Aliases such as '2.0', 'lcd_2inch', '1.69' and 'lcd_1inch69' are accepted,
+# but the canonical names above are recommended.
+#
+# IMPORTANT: display GPIO/SPI pins are NOT configured here. All supported LCDs
+# use the same shared lcd/lcdconfig.py pin assignments. Selecting another LCD
+# changes only the display controller driver and resolution.
+LCD_DEVICE = '2inch'
+
 FAST_INTERVAL = 1
 MEDIUM_INTERVAL = 60
 SLOW_INTERVAL = 600
@@ -59,6 +77,15 @@ ADGUARD_BLOCKED_RATIO_ENTITY = 'sensor.adguard_home_dns_queries_blocked_ratio'
 # -----------------------------------------------------------------------------
 # Grid / pages / navigation
 # -----------------------------------------------------------------------------
+# GRID_ROWS and GRID_COLS describe the logical matrix, not fixed pixel sizes.
+# The renderer reads the selected LCD driver's native resolution and calculates
+# the cell dimensions automatically.
+#
+# Examples with the default 3x3 matrix in landscape mode:
+#   LCD_DEVICE='2inch'   -> 320x240 -> cells approx. 106.7x80 px
+#   LCD_DEVICE='1inch69' -> 280x240 -> cells approx.  93.3x80 px
+#
+# Therefore the same PAGES/layout configuration can be used on both displays.
 GRID_ROWS = 3
 GRID_COLS = 3
 
@@ -94,7 +121,7 @@ SELECTED_INSET = 3
 #
 # Available classic modules:
 # cpu, ram, hdd, uptime, load, ip, hostname, network,
-# pivccu, home_assistant (or ha), adguard
+# pivccu, home_assistant (or ha), adguard, proxmox
 #
 # Additional ring/donut modules:
 # cpu_ring, ram_ring, disk_ring, hdd_ring, temp_ring

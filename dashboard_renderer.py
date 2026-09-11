@@ -10,12 +10,26 @@ class DashboardRenderer:
         self.card_builders = card_builders
         self.logger = logger
 
-        self.width = disp.height
-        self.height = disp.width
-        self.rows = int(getattr(cfg, "GRID_ROWS", 3))
-        self.cols = int(getattr(cfg, "GRID_COLS", 3))
+        # All currently supported LCD drivers expose native portrait dimensions.
+        # The dashboard is rendered in landscape, so width/height are swapped.
+        # This makes the logical matrix automatically follow the selected LCD's
+        # actual resolution (e.g. 320x240 or 280x240).
+        self.width = int(disp.height)
+        self.height = int(disp.width)
+        self.rows = max(1, int(getattr(cfg, "GRID_ROWS", 3)))
+        self.cols = max(1, int(getattr(cfg, "GRID_COLS", 3)))
         self.cell_width = self.width / self.cols
         self.cell_height = self.height / self.rows
+
+        self.logger.info(
+            "Renderer canvas=%dx%d grid=%dx%d cell=%.1fx%.1f",
+            self.width,
+            self.height,
+            self.rows,
+            self.cols,
+            self.cell_width,
+            self.cell_height,
+        )
 
         font_path = getattr(cfg, "FONT_PATH", "./font/JetBrainsMono-Medium.ttf")
         self.font_title = ImageFont.truetype(font_path, int(getattr(cfg, "FONT_TITLE", 15)))

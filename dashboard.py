@@ -1,8 +1,7 @@
 """Modular Raspberry Pi LCD dashboard controller.
 
-Scheduling, rendering, data collection, navigation, and GPIO input are separated.
-GPIO navigation is enabled explicitly through config.py. When disabled, no GPIO
-buttons are initialized and no block selection frame is rendered.
+Scheduling, rendering, data collection, navigation, GPIO input, and LCD driver
+selection are separated. GPIO navigation is enabled explicitly through config.py.
 """
 
 import logging
@@ -10,13 +9,12 @@ import signal
 import sys
 import time
 
-from lcd import LCD_2inch
-
 import config as cfg
 from dashboard_buttons import DashboardButtons
 from dashboard_modules import CARD_BUILDERS, COLLECTORS
 from dashboard_navigation import DashboardNavigator
 from dashboard_renderer import DashboardRenderer
+from lcd.display_factory import create_display
 
 
 disp = None
@@ -179,7 +177,23 @@ def main():
         slow_interval,
     )
 
-    disp = LCD_2inch.LCD_2inch()
+    configured_lcd = getattr(cfg, "LCD_DEVICE", "2inch")
+    disp, lcd_device = create_display(configured_lcd)
+    state["lcd_device"] = lcd_device
+    state["lcd_native_width"] = int(disp.width)
+    state["lcd_native_height"] = int(disp.height)
+    state["lcd_render_width"] = int(disp.height)
+    state["lcd_render_height"] = int(disp.width)
+
+    logger.info(
+        "LCD device=%s native=%dx%d landscape=%dx%d",
+        lcd_device,
+        disp.width,
+        disp.height,
+        disp.height,
+        disp.width,
+    )
+
     disp.Init()
     disp.clear()
     disp.bl_DutyCycle(int(getattr(cfg, "DISPLAY_BACKLIGHT", 100)))

@@ -1,6 +1,5 @@
 """Service/API collectors for TFT2."""
 
-import os
 import requests
 from lxml import etree
 
@@ -35,23 +34,26 @@ def _ha_entity(cfg, entity_id):
     return response.json(), ""
 
 
-def _read_pivccu_ip(cfg):
-    ip = os.popen(
-        "pivccu-info | grep ^IP | cut -d\":\" -f2 | tr -d ' '"
-    ).read().strip()
-    return ip or getattr(cfg, "PIVCCU_FALLBACK_IP", "")
+def _openccu_ip(cfg):
+    """Return the OpenCCU address configured by the user.
+
+    OPENCCU_IP is the preferred setting. PIVCCU_FALLBACK_IP is accepted as a
+    compatibility alias for existing config.py files. No local discovery is
+    performed.
+    """
+    configured = getattr(cfg, "OPENCCU_IP", None)
+    if configured is None:
+        configured = getattr(cfg, "PIVCCU_FALLBACK_IP", "")
+    return str(configured or "").strip()
 
 
-def _read_pivccu_version():
-    return os.popen(
-        "pivccu-info | grep version | cut -d\":\" -f2 | tr -d ' '"
-    ).read().strip()
-
-
-def _read_pivccu_notifications(cfg, ip):
+def _read_openccu_notifications(cfg, ip):
     token = getattr(cfg, "XML_RPC_TOKEN", "")
-    if not ip or not token:
-        return None
+    if not ip:
+        raise ValueError("OpenCCU IP is not configured")
+    if not token:
+        raise ValueError("XML_RPC_TOKEN is not configured")
+
     url = f"http://{ip}/addons/xmlapi/systemNotification.cgi?sid={token}"
     response = requests.get(url, timeout=getattr(cfg, "REQUEST_TIMEOUT", 5))
     response.raise_for_status()
@@ -109,33 +111,34 @@ def collect_medium(state, cfg, logger):
     elif state.get("ha_auth_error"):
         state["adguard_detail"] = "AUTH"
 
-    state["pivccu_online"] = os.system("systemctl is-active --quiet pivccu.service") == 0
-    if state["pivccu_online"]:
-        try:
-            ip = state.get("pivccu_ip") or _read_pivccu_ip(cfg)
-            state["pivccu_messages"] = _read_pivccu_notifications(cfg, ip)
-        except Exception as error:
-            state["pivccu_messages"] = None
-            logger.warning("MEDIUM piVCCU notification read failed: %s", error)
-    else:
-        state["pivccu_messages"] = None
+    state["openccu_ip"] = _openccu_ip(cfg)
+    state["openccu_online"] = False
+    state["openccu_messages"] = None
+
+    try:
+        state["openccu_messages"] = _read_openccu_notifications(
+            cfg,
+            state["openccu_ip"],
+        )
+        state["openccu_online"] = True
+    except Exception as error:
+        logger.warning("MEDIUM OpenCCU XML API unavailable: %s", error)
 
     if getattr(cfg, "LOG_MEDIUM_VALUES", True):
         logger.info(
-            "MEDIUM services HA=%s AdGuard=%s protection=%s blocked=%s piVCCU=%s messages=%s",
+            "MEDIUM services HA=%s AdGuard=%s protection=%s blocked=%s OpenCCU=%s messages=%s",
             "online" if state.get("ha_online") else "offline",
             "online" if state.get("adguard_online") else "offline",
             state.get("adguard_protection"),
             state.get("adguard_blocked_ratio"),
-            "online" if state.get("pivccu_online") else "offline",
-            state.get("pivccu_messages"),
+            "online" if state.get("openccu_online") else "offline",
+            state.get("openccu_messages"),
         )
 
 
 def collect_slow(state, cfg, logger):
     """Refresh mostly static service metadata every ten minutes."""
-    state["pivccu_ip"] = _read_pivccu_ip(cfg)
-    state["pivccu_version"] = _read_pivccu_version()
+    state["openccu_ip"] = _openccu_ip(cfg)
 
     try:
         response = _ha_get(cfg, "/api/config")
@@ -152,10 +155,9 @@ def collect_slow(state, cfg, logger):
 
     if getattr(cfg, "LOG_SLOW_VALUES", True):
         logger.info(
-            "SLOW services HA_version=%s piVCCU_ip=%s piVCCU_version=%s",
+            "SLOW services HA_version=%s OpenCCU_ip=%s",
             state.get("ha_version") or "-",
-            state.get("pivccu_ip") or "-",
-            state.get("pivccu_version") or "-",
+            state.get("openccu_ip") or "-",
         )
 
 
@@ -193,21 +195,20 @@ def card_adguard(state):
     }
 
 
-def card_pivccu(state):
-    online = bool(state.get("pivccu_online"))
-    messages = state.get("pivccu_messages")
+def card_openccu(state):
+    online = bool(state.get("openccu_online"))
+    messages = state.get("openccu_messages")
     if online:
         value = "ERR ?" if messages is None else f"ERR {messages}"
-        detail = f"V {state.get('pivccu_version') or '?'}"
         status = "error" if messages not in (0, None) else "ok"
     else:
         value = "OFFLINE"
-        detail = ""
         status = "error"
+
     return {
-        "title": "piVCCU",
+        "title": "OpenCCU",
         "value": value,
-        "detail": detail,
+        "detail": state.get("openccu_ip") or "",
         "status": status,
     }
 
@@ -216,5 +217,7 @@ CARD_BUILDERS = {
     "home_assistant": card_home_assistant,
     "ha": card_home_assistant,
     "adguard": card_adguard,
-    "pivccu": card_pivccu,
+    "openccu": card_openccu,
+    # Compatibility alias for existing config.py layouts.
+    "pivccu": card_openccu,
 }

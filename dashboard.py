@@ -140,13 +140,31 @@ def _process_button_actions(logger):
         DashboardButtons.ACTION_BACK: navigate_back,
     }
 
-    for action in buttons.get_pending():
+    for event in buttons.get_pending():
+        action = event.get("action")
+        config_name = event.get("config_name") or "GPIO_BUTTON_UNKNOWN"
+        pin = event.get("pin")
+
         handler = action_handlers.get(action)
         if not handler:
+            if getattr(cfg, "LOG_BUTTON_EVENTS", True):
+                logger.warning(
+                    "%s pressed (BCM GPIO%s, unknown action=%s)",
+                    config_name,
+                    pin if pin is not None else "?",
+                    action,
+                )
             continue
+
         changed = handler()
         if getattr(cfg, "LOG_BUTTON_EVENTS", True):
-            logger.info("BUTTON action=%s changed=%s", action, changed)
+            logger.info(
+                "%s pressed (BCM GPIO%s, action=%s, changed=%s)",
+                config_name,
+                pin if pin is not None else "?",
+                action,
+                changed,
+            )
 
 
 def next_page(logger=None):

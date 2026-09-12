@@ -1,6 +1,6 @@
 """Data collectors and card builders for TFT2 dashboard modules."""
 
-from . import network, proxmox, services, system
+from . import network, power, proxmox, services, system
 
 COLLECTORS = {
     "fast": [system.collect_fast],
@@ -23,3 +23,7 @@ CARD_BUILDERS.update(system.CARD_BUILDERS)
 CARD_BUILDERS.update(network.CARD_BUILDERS)
 CARD_BUILDERS.update(services.CARD_BUILDERS)
 CARD_BUILDERS.update(proxmox.CARD_BUILDERS)
+CARD_BUILDERS.update(power.CARD_BUILDERS)
+
+POWER_ACTIONS = power.POWER_ACTIONS
+execute_power_action = power.execute_power_action

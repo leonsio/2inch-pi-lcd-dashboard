@@ -9,6 +9,18 @@ REQUEST_TIMEOUT = 5
 DISPLAY_BACKLIGHT = 100
 
 # -----------------------------------------------------------------------------
+# Power actions
+# -----------------------------------------------------------------------------
+# Optional command executed before both the shutdown and reboot blocks run their
+# system action. None, an empty string, or False disables the hook.
+#
+# A string is executed through the shell. A list/tuple is executed directly,
+# e.g. ['systemctl', 'stop', 'my-service.service'].
+# If pre_shutdown exits with an error, the requested power action is aborted.
+pre_shutdown = None
+# pre_shutdown = '/usr/local/bin/pre-shutdown.sh'
+
+# -----------------------------------------------------------------------------
 # LCD device
 # -----------------------------------------------------------------------------
 # Select the physical LCD driver. The default keeps existing installations on
@@ -127,13 +139,19 @@ SELECTED_INSET = 3
 #
 # Available classic modules:
 # cpu, ram, hdd, uptime, load, ip, hostname, network,
-# pivccu, home_assistant (or ha), adguard, proxmox
+# pivccu, home_assistant (or ha), adguard, proxmox, shutdown, reboot
 #
 # Additional ring/donut modules:
 # cpu_ring, ram_ring, disk_ring, hdd_ring, temp_ring
 #
 # hdd_ring is an alias for disk_ring. The classic cpu/ram/hdd modules remain
 # available and can be mixed freely with ring modules on the same page.
+#
+# Power action blocks execute immediately when OK is pressed. They do not need
+# target_page. Both run pre_shutdown first when it is configured:
+#
+#   'row3cell1': {'module': 'shutdown'},
+#   'row3cell2': {'module': 'reboot'},
 
 # -----------------------------------------------------------------------------
 # SELECTABLE - IMPORTANT
@@ -203,7 +221,8 @@ SELECTED_INSET = 3
 #   }
 #
 # A selectable block does NOT need a target_page. It can still be selected and
-# highlighted, but pressing OK on it then does nothing:
+# highlighted, but pressing OK on it then does nothing (except for action
+# modules such as shutdown/reboot):
 #
 #   'row1cell1': {
 #       'module': 'uptime',

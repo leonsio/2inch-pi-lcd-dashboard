@@ -11,7 +11,7 @@ import time
 
 import config as cfg
 from dashboard_buttons import DashboardButtons
-from dashboard_modules import CARD_BUILDERS, COLLECTORS
+from dashboard_modules import CARD_BUILDERS, COLLECTORS, POWER_ACTIONS, execute_power_action
 from dashboard_navigation import DashboardNavigator
 from dashboard_renderer import DashboardRenderer
 from lcd.display_factory import create_display
@@ -116,7 +116,17 @@ def navigate_next():
 
 
 def open_selected():
-    if buttons_enabled and navigator and navigator.open_selected():
+    if not buttons_enabled or not navigator:
+        return False
+
+    entry = navigator.selected_entry()
+    if entry:
+        module_name = str(entry["slot"].get("module", "")).lower()
+        if module_name in POWER_ACTIONS:
+            logger = logging.getLogger("dashboard")
+            return execute_power_action(module_name, cfg, logger)
+
+    if navigator.open_selected():
         _request_render()
         return True
     return False
@@ -240,7 +250,7 @@ def main():
         ", ".join(page.get("name", f"page-{i + 1}") for i, page in enumerate(all_pages)),
     )
     if buttons_enabled:
-        logger.info("Navigation: PREVIOUS=previous NEXT=next OK=open BACK=return")
+        logger.info("Navigation: PREVIOUS=previous NEXT=next OK=open/action BACK=return")
 
     next_fast = time.monotonic()
     next_medium = time.monotonic() + medium_interval

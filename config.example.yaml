@@ -83,6 +83,19 @@ network: {}
 #       name: homeassistant
 #       title: Home Assistant
 #     mqtt: mosquitto
+# rest:
+#   endpoints:
+#     temperature:
+#       url: http://192.168.1.50/api/status
+#       interval: 60       # allowed: 1, 60, 600 seconds
+#       path: sensors.temperature
+#       title: Temperature
+#       unit: '°C'
+#       precision: 1
+#       detail_path: device.name
+#       verify_ssl: true
+#       headers:
+#         Authorization: 'Bearer YOUR_TOKEN'
 
 # Grid and selection
 GRID_ROWS: 3

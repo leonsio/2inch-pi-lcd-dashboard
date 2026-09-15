@@ -10,8 +10,10 @@ from types import SimpleNamespace
 
 MODULES = {
     "system": ("dashboard_modules.system", {},
-               "cpu ram hdd uptime load cpu_ring ram_ring disk_ring hdd_ring temp_ring"),
-    "network": ("dashboard_modules.network", {}, "ip hostname network"),
+               "cpu ram swap hdd disk_free uptime load cpu_freq processes "
+               "cpu_ring ram_ring swap_ring disk_ring hdd_ring freq_ring temp_ring"),
+    "network": ("dashboard_modules.network", {},
+                "ip hostname network traffic network_rx network_tx network_link wifi wifi_ring"),
     "power": ("dashboard_modules.power", {}, "shutdown reboot"),
     "pihole": ("dashboard_modules.pihole", {"url": "", "password": "", "verify_ssl": True}, "pihole pi_hole"),
     "pivccu": ("dashboard_modules.pivccu", {"ip": "", "token": ""}, "pivccu openccu"),
@@ -24,8 +26,11 @@ MODULES = {
     }, "adguard"),
     "proxmox": ("dashboard_modules.proxmox", {
         "url": "", "api_token_id": "", "api_token_secret": "",
-        "verify_ssl": False, "include_lxc": False,
+        "verify_ssl": False, "include_lxc": False, "vms": {},
     }, "proxmox"),
+    "docker": ("dashboard_modules.docker", {
+        "socket": "/var/run/docker.sock", "containers": {},
+    }, "docker docker_ring"),
 }
 
 
@@ -34,8 +39,13 @@ def available_cards(data):
     for name, (_, _, names) in MODULES.items():
         if name in data:
             cards.update(names.split())
+
     cards.update("home_assistant." + name for name in
                  data.get("home_assistant", {}).get("entities", {}))
+    cards.update("proxmox." + name for name in
+                 data.get("proxmox", {}).get("vms", {}))
+    cards.update("docker." + name for name in
+                 data.get("docker", {}).get("containers", {}))
     return cards
 
 

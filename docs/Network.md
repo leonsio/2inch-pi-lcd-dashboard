@@ -1,165 +1,183 @@
-# Network monitoring
+# Network module
 
-The `network` module provides local interface data and optional WAN/public IPv4 monitoring.
+The `network` module displays local interface information and can optionally monitor WAN reachability, the public/external IPv4 address and arbitrary IPv4 hosts.
 
-## Basic local monitoring
+## Enable the module
+
+The minimal configuration performs only local network monitoring and makes no external HTTP requests or pings:
 
 ```yaml
 network: {}
 ```
 
-This keeps the existing cards:
+## Top-level parameters
 
-- `network`
-- `ip`
-- `hostname`
-- `traffic`
-- `network_rx`
-- `network_tx`
-- `network_link`
-- `wifi`
-- `wifi_ring`
+| Parameter | Type | Default | Purpose |
+| --- | --- | --- | --- |
+| `wan` | mapping | see below | Optional WAN reachability test. |
+| `external_ipv4` | mapping | see below | Optional public IPv4 lookup. |
+| `checks` | mapping | `{}` | Optional named IPv4 reachability checks. |
+
+The global `NETWORK_INTERFACES` list controls which local interface is selected first:
+
+```yaml
+NETWORK_INTERFACES:
+  - eth0
+  - wlan0
+```
+
+The first listed interface with a usable IPv4 address is selected.
+
+## WAN parameters
+
+Default values:
+
+```yaml
+network:
+  wan:
+    enabled: false
+    target: 1.1.1.1
+    interval: medium
+    timeout: 1.0
+```
+
+| Parameter | Type | Default/example | Purpose |
+| --- | --- | --- | --- |
+| `enabled` | boolean | `false` | Enable the WAN test and `wan` card. |
+| `target` | IPv4 string | `1.1.1.1` | IPv4 address pinged with one ICMP request. |
+| `interval` | string | `medium` | Scheduler group: `fast`, `medium` or `slow`. |
+| `timeout` | number | `1.0` | Ping timeout in seconds. |
+
+The WAN test validates IPv4 targets. Hostnames are not used for the ICMP target.
+
+## External IPv4 parameters
+
+Default values:
+
+```yaml
+network:
+  external_ipv4:
+    enabled: false
+    url: https://api.ipify.org
+    interval: slow
+    verify_ssl: true
+```
+
+| Parameter | Type | Default/example | Purpose |
+| --- | --- | --- | --- |
+| `enabled` | boolean | `false` | Enable external IPv4 lookup and the `wan_ip`/`external_ipv4` cards. |
+| `url` | HTTP(S) URL | `https://api.ipify.org` | Service expected to return a plain IPv4 address. |
+| `interval` | string | `slow` | Scheduler group: `fast`, `medium` or `slow`. |
+| `verify_ssl` | boolean | `true` | Verify HTTPS certificates. |
+
+The shared `REQUEST_TIMEOUT` setting controls the HTTP lookup timeout. The response is accepted only when it parses as a valid IPv4 address.
+
+## Custom reachability checks
+
+Each entry below `checks` creates `network.<alias>`.
+
+```yaml
+network:
+  checks:
+    router:
+      ip: 192.168.1.1
+      title: Router
+      interval: fast
+      timeout: 1.0
+```
+
+| Parameter | Required | Type | Example/default | Purpose |
+| --- | --- | --- | --- | --- |
+| `ip` | yes | IPv4 string | `192.168.1.1` | IPv4 target to ping. |
+| `title` | no | string | `Router` | Dashboard card title. Alias-derived title is used when omitted. |
+| `interval` | no | string | `medium` | `fast`, `medium` or `slow`. |
+| `timeout` | no | number | `1.0` | ICMP timeout in seconds. |
+
+Aliases should use lowercase letters, digits and underscores. Identical targets with the same timeout within one scheduler cycle are de-duplicated into one ping.
 
 ## Scheduler intervals
 
-WAN and reachability checks use symbolic interval names:
-
-| Value | Scheduler |
-| --- | --- |
-| `fast` | `FAST_INTERVAL` |
-| `medium` | `MEDIUM_INTERVAL` |
-| `slow` | `SLOW_INTERVAL` |
-
-With the shipped defaults these correspond to 1, 60 and 600 seconds. If the global scheduler intervals are changed, the network checks automatically follow those values.
-
-## WAN status
-
-Enable WAN monitoring by pinging a public IPv4 address:
+`fast`, `medium` and `slow` refer to the global scheduler settings rather than hard-coded times:
 
 ```yaml
+FAST_INTERVAL: 1
+MEDIUM_INTERVAL: 60
+SLOW_INTERVAL: 600
+```
+
+With these defaults the groups run every 1, 60 and 600 seconds. If the global values are changed, WAN/custom checks follow the changed schedule.
+
+## Available cards
+
+### Always available with `network: {}`
+
+| Card | Display |
+| --- | --- |
+| `ip` | Local IPv4 and selected interface |
+| `hostname` | Hostname and local IPv4 |
+| `network` | Combined local IP, hostname, interface and link speed |
+| `traffic` | Current RX/TX rates |
+| `network_rx` | Current receive rate and total received data |
+| `network_tx` | Current transmit rate and total transmitted data |
+| `network_link` | Link state, speed and MTU |
+| `wifi` | Wi-Fi signal in dBm and quality percent |
+| `wifi_ring` | Wi-Fi quality as a ring |
+
+### Optional cards
+
+| Card | Required configuration | Display |
+| --- | --- | --- |
+| `wan` | `wan.enabled: true` | WAN `ONLINE`/`OFFLINE` and approximate ping time |
+| `wan_ip` | `external_ipv4.enabled: true` | Public IPv4 address |
+| `external_ipv4` | `external_ipv4.enabled: true` | Alias of `wan_ip` |
+| `network.<alias>` | entry under `checks` | Target `ONLINE`/`OFFLINE` and approximate ping time |
+
+## Complete example
+
+```yaml
+NETWORK_INTERFACES:
+  - eth0
+  - wlan0
+
 network:
   wan:
     enabled: true
     target: 1.1.1.1
     interval: medium
     timeout: 1.0
-```
 
-This creates the card:
-
-```text
-wan
-```
-
-The card shows `ONLINE`, `OFFLINE`, `WAIT` or `N/A`. When online it also displays the target and approximate round-trip time.
-
-The WAN test intentionally uses an IPv4 address instead of a hostname so DNS failure and Internet reachability remain separate failure modes.
-
-## External/public IPv4
-
-The public IPv4 address can be read from an HTTP(S) endpoint that returns a plain IPv4 address:
-
-```yaml
-network:
   external_ipv4:
     enabled: true
     url: https://api.ipify.org
     interval: slow
     verify_ssl: true
-```
 
-This creates two aliases for the same card:
-
-```text
-wan_ip
-external_ipv4
-```
-
-The response is validated as an IPv4 address before it is displayed. Errors are shown as `OFFLINE`, `AUTH`, `HTTP NNN` or `INVALID`.
-
-The URL is configurable, so a different public-IP service or an internally hosted endpoint can be used instead.
-
-## Custom IP reachability checks
-
-Any number of IPv4 addresses can be monitored:
-
-```yaml
-network:
   checks:
     router:
       ip: 192.168.1.1
       title: Router
       interval: fast
       timeout: 1.0
-
     dns:
       ip: 8.8.8.8
       title: Google DNS
       interval: medium
       timeout: 1.0
 
-    remote_site:
-      ip: 203.0.113.10
-      title: Remote Site
-      interval: slow
-      timeout: 2.0
-```
-
-Each entry creates a card named `network.<alias>`:
-
-```text
-network.router
-network.dns
-network.remote_site
-```
-
-The cards show `ONLINE` or `OFFLINE` and include the tested address and approximate latency when reachable.
-
-## Combined example
-
-```yaml
-network:
-  wan:
-    enabled: true
-    target: 1.1.1.1
-    interval: fast
-    timeout: 1.0
-
-  external_ipv4:
-    enabled: true
-    url: https://api.ipify.org
-    interval: slow
-    verify_ssl: true
-
-  checks:
-    router:
-      ip: 192.168.1.1
-      title: Router
-      interval: fast
-      timeout: 1.0
-    dns:
-      ip: 8.8.8.8
-      title: DNS
-      interval: medium
-      timeout: 1.0
-
 PAGES:
-  - name: connectivity
+  - name: network
     layout:
-      row1cell1: wan
-      row1cell2: wan_ip
-      row1cell3: network.router
-      row2cell1: network.dns
-      row2cell2: network_link
-      row2cell3: wifi_ring
-      row3cell1: {module: traffic, colspan: 3}
+      row1cell1: network
+      row1cell2: wan
+      row1cell3: wan_ip
+      row2cell1: network.router
+      row2cell2: network.dns
+      row2cell3: network_link
+      row3cell1: network_rx
+      row3cell2: network_tx
+      row3cell3: wifi_ring
 ```
 
-## Implementation notes
+## Requirements and behavior
 
-- Reachability checks use the system `ping` executable and one ICMP echo request.
-- If `ping` is not installed or executable, the card shows `N/A` rather than treating the host as offline.
-- Identical ping targets with the same timeout within one scheduler cycle are de-duplicated. For example, a WAN check and a named check against `1.1.1.1` result in only one ping per cycle.
-- `timeout` is interpreted in seconds and is clamped internally to a safe range.
-- External IPv4 retrieval uses the global `REQUEST_TIMEOUT` setting.
-- No network monitoring option performs write operations against remote systems.
+ICMP checks use the operating system `ping` command. If it is unavailable, the affected card shows `N/A`/`PING`. Wi-Fi signal information is read from `/proc/net/wireless`; Ethernet interfaces or drivers that do not expose this information show `N/A` for Wi-Fi cards.

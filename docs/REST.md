@@ -1,9 +1,25 @@
-# Generic REST module
+# REST module
 
-The `rest` module exposes values from arbitrary JSON HTTP endpoints as dashboard
-cards. It is intentionally read-only: polling uses HTTP GET only.
+The `rest` module creates read-only dashboard cards from arbitrary JSON HTTP(S) endpoints. All requests are GET requests.
 
-## Basic configuration
+## Enable the module
+
+```yaml
+rest:
+  endpoints: {}
+```
+
+The module creates no cards until at least one endpoint is configured.
+
+## Top-level parameters
+
+| Parameter | Type | Default | Purpose |
+| --- | --- | --- | --- |
+| `endpoints` | mapping | `{}` | Named REST cards keyed by alias. |
+
+## Endpoint parameters
+
+Each item under `endpoints` creates a card named `rest.<alias>`.
 
 ```yaml
 rest:
@@ -15,102 +31,84 @@ rest:
       title: Temperature
       unit: '°C'
       precision: 1
-
-PAGES:
-  - name: api
-    layout:
-      row1cell1: rest.temperature
+      detail: Living room
+      detail_path: device.name
+      verify_ssl: true
+      headers:
+        Authorization: 'Bearer YOUR_TOKEN'
 ```
 
-Each entry under `rest.endpoints` creates a card named `rest.<alias>`.
-Aliases may contain lowercase letters, digits and underscores.
+| Parameter | Required | Type | Example/default | Purpose |
+| --- | --- | --- | --- | --- |
+| `url` | yes | HTTP(S) URL | `http://192.168.1.50/api/status` | Endpoint to query with GET. |
+| `interval` | no | integer | `60` | Polling group selector: exactly `1`, `60` or `600`. Default: `60`. |
+| `path` | no | string | `sensors.temperature` | Dot-separated path to the value in the JSON response. Empty path means the entire JSON payload. |
+| `title` | no | string | `Temperature` | Card title; alias-derived title is used when omitted. |
+| `unit` | no | string | `°C` | Text appended to the displayed value. |
+| `precision` | no | integer 0–10 | `1` | Decimal places for numeric values. |
+| `detail` | no | string | `Living room` | Static detail text. |
+| `detail_path` | no | string | `device.name` | Optional JSON path whose value replaces the static detail text when available. |
+| `headers` | no | mapping | `Authorization: 'Bearer ...'` | Additional HTTP request headers. Header values must be strings. |
+| `verify_ssl` | no | boolean | `true` | Verify HTTPS certificates. |
 
-## Polling interval
-
-`interval` controls how often the endpoint is assigned to a dashboard polling
-cycle. Supported values are deliberately restricted to:
-
-- `1` - fast cycle, normally every second
-- `60` - medium cycle, normally every minute; this is the default
-- `600` - slow cycle, normally every ten minutes
-
-These values map to the dashboard's existing `FAST_INTERVAL`, `MEDIUM_INTERVAL`
-and `SLOW_INTERVAL` scheduler groups. With the shipped defaults those groups run
-at exactly 1, 60 and 600 seconds. If the global scheduler intervals are changed,
-the corresponding REST polling cycle changes with them.
-
-Several REST cards with the same URL, headers, SSL setting and interval share one
-HTTP request during that cycle. This allows multiple values from one JSON response
-without repeatedly querying the remote service.
+Aliases should use lowercase letters, digits and underscores.
 
 ## JSON paths
 
-`path` selects the value to display. Use dot-separated object keys. Numeric path
-segments address list indexes.
-
-Example response:
+Object keys are separated by dots:
 
 ```json
 {
-  "device": {"name": "Boiler"},
   "sensors": {
-    "temperature": 54.27,
-    "channels": [12.1, 13.5]
+    "temperature": 21.7
   }
 }
 ```
 
-Examples:
-
-- `sensors.temperature` -> `54.27`
-- `device.name` -> `Boiler`
-- `sensors.channels.0` -> `12.1`
-- an empty or omitted `path` selects the complete JSON response
-
-A missing path is shown as `PATH` on the card.
-
-## Card options
-
-| Option | Default | Meaning |
-| --- | --- | --- |
-| `url` | required | Complete HTTP or HTTPS GET URL; query parameters are allowed |
-| `interval` | `60` | Polling cycle: `1`, `60` or `600` seconds |
-| `path` | `''` | Dot-separated JSON value path |
-| `title` | alias | Card title |
-| `unit` | `''` | Unit appended to the displayed value |
-| `precision` | unchanged | Decimal places for numeric values, 0-10 |
-| `detail` | `''` | Fixed detail line |
-| `detail_path` | `''` | JSON path whose value replaces the fixed detail line |
-| `headers` | `{}` | Additional HTTP request headers |
-| `verify_ssl` | `true` | Verify HTTPS certificates |
-
-Boolean JSON values are displayed as `ON` and `OFF`. Dictionaries and arrays are
-rendered as compact JSON, although scalar values are usually more suitable for a
-small LCD.
-
-## Authentication headers
-
-Bearer tokens, API keys and other header-based authentication can be configured
-without adding service-specific code:
+Use:
 
 ```yaml
-rest:
-  endpoints:
-    battery:
-      url: https://device.example.lan/api/telemetry
-      interval: 60
-      path: battery.percent
-      title: Battery
-      unit: '%'
-      headers:
-        Authorization: 'Bearer YOUR_TOKEN'
-        X-API-Key: 'YOUR_API_KEY'
+path: sensors.temperature
 ```
 
-Credentials embedded in the URL itself are rejected. Keep real tokens only in the
-local `config.yaml`, which is ignored by Git.
+Numeric list indexes are also supported. For this payload:
 
-## Multiple values from one response
+```json
+{
+  "channels": [
+    {"value": 10},
+    {"value": 20}
+  ]
+}
+```
+
+use:
+
+```yaml
+path: channels.1.value
+```
+
+to display `20`.
+
+## Polling intervals
+
+The REST module accepts the numeric values `1`, `60` and `600` for `interval`:
+
+| `interval` | Scheduler group | Default global scheduler value |
+| ---: | --- | ---: |
+| `1` | fast | `FAST_INTERVAL: 1` |
+| `60` | medium | `MEDIUM_INTERVAL: 60` |
+| `600` | slow | `SLOW_INTERVAL: 600` |
+
+The numbers select a scheduler group. If the global `FAST_INTERVAL`, `MEDIUM_INTERVAL` or `SLOW_INTERVAL` values are changed, the real elapsed polling time follows that group. For example, `interval: 60` still selects the medium group even if `MEDIUM_INTERVAL` is changed to `30`.
+
+The global `REQUEST_TIMEOUT` controls HTTP timeout.
+
+## Request de-duplication
+
+Multiple cards can read different values from the same response without issuing duplicate HTTP requests during the same scheduler cycle. Requests are shared when URL, headers and SSL verification settings are identical.
+
+Example:
 
 ```yaml
 rest:
@@ -121,7 +119,6 @@ rest:
       path: sensors.temperature
       title: Temperature
       unit: '°C'
-      precision: 1
 
     humidity:
       url: http://192.168.1.50/api/status
@@ -129,28 +126,98 @@ rest:
       path: sensors.humidity
       title: Humidity
       unit: '%'
-      precision: 0
-
-    device_state:
-      url: http://192.168.1.50/api/status
-      interval: 60
-      path: state
-      title: Device
-      detail_path: device.name
 ```
 
-All three cards above use one GET request per medium polling cycle.
+Both cards use one GET request per medium cycle.
 
-## Errors
+## Headers and authentication
 
-REST cards use short status values that remain readable on the LCD:
+Bearer token example:
 
-- `WAIT` - no poll has completed yet
-- `OFFLINE` - connection, timeout or other request failure
-- `AUTH` - HTTP 401 or 403
-- `HTTP NNN` - other HTTP error response
-- `JSON` - response was not valid JSON
-- `PATH` - configured JSON path was not found
+```yaml
+rest:
+  endpoints:
+    service_status:
+      url: https://service.example.lan/api/status
+      interval: 60
+      path: status
+      headers:
+        Authorization: 'Bearer YOUR_TOKEN'
+```
 
-The module does not log configured headers, so authentication values are not
-written to the normal dashboard log output.
+API key example:
+
+```yaml
+rest:
+  endpoints:
+    service_status:
+      url: https://service.example.lan/api/status
+      interval: 60
+      path: status
+      headers:
+        X-API-Key: 'YOUR_API_KEY'
+```
+
+Credentials stored in headers belong only in the local `config.yaml` and should not be committed.
+
+## Available cards
+
+For each endpoint alias there is exactly one card:
+
+```text
+rest.<alias>
+```
+
+For example `temperature` creates `rest.temperature`.
+
+## Complete example
+
+```yaml
+rest:
+  endpoints:
+    temperature:
+      url: http://192.168.1.50/api/status
+      interval: 60
+      path: sensors.temperature
+      title: Temperature
+      unit: '°C'
+      precision: 1
+      detail_path: device.name
+      verify_ssl: true
+      headers: {}
+
+    status:
+      url: http://192.168.1.50/api/status
+      interval: 1
+      path: status
+      title: Service
+      detail: Live status
+      verify_ssl: true
+      headers: {}
+
+    version:
+      url: http://192.168.1.50/api/status
+      interval: 600
+      path: system.version
+      title: Version
+      verify_ssl: true
+      headers: {}
+
+PAGES:
+  - name: rest
+    layout:
+      row1cell1: rest.temperature
+      row1cell2: rest.status
+      row1cell3: rest.version
+```
+
+## Error values
+
+Depending on the response, cards can show `WAIT`, `OFFLINE`, `AUTH`, `HTTP <status>`, `JSON` or `PATH`.
+
+- `AUTH`: HTTP 401 or 403
+- `JSON`: response could not be parsed as JSON
+- `PATH`: configured `path` was not found
+- `OFFLINE`: request failed before a usable HTTP response was obtained
+
+The module is intentionally GET-only so a periodic dashboard refresh cannot trigger write operations on a REST service.

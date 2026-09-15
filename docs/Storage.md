@@ -1,34 +1,16 @@
 # Storage module
 
-The `storage` module monitors one or more local filesystems and their backing
-block devices. It is separate from the basic `hdd`/`disk_ring` cards in the
-`system` module so additional SSDs, NVMe drives and mounted data volumes can be
-shown individually.
+The `storage` module monitors one or more mounted filesystems, free/used capacity, disk I/O rates and optional SMART health information.
 
-## Quick start
+## Enable the module
 
-An empty block monitors the root filesystem:
+The minimal form monitors the root filesystem `/`:
 
 ```yaml
 storage: {}
-
-PAGES:
-  - name: storage
-    layout:
-      row1cell1: storage
-      row1cell2: storage.root
-      row1cell3: storage.root_ring
-      row2cell1: storage.root_free
-      row2cell2: {module: storage.root_io, colspan: 2}
 ```
 
-`storage: {}` creates the default `root` device with mountpoint `/`. SMART is
-not enabled by default.
-
-## Multiple filesystems
-
-Replace the default device mapping when more than one filesystem should be
-monitored:
+This uses the built-in defaults:
 
 ```yaml
 storage:
@@ -37,6 +19,112 @@ storage:
     root:
       mount: /
       title: ROOT
+      device: ''
+      io_device: ''
+      smart: false
+```
+
+## Top-level parameters
+
+| Parameter | Type | Default/example | Purpose |
+| --- | --- | --- | --- |
+| `devices` | mapping | `root: ...` | Filesystems/storage devices to expose as dashboard cards. |
+| `smartctl` | string | `smartctl` | Executable name or path used for SMART queries. |
+
+## Device parameters
+
+Each key below `devices` becomes a card alias such as `storage.ssd`.
+
+```yaml
+storage:
+  devices:
+    ssd:
+      mount: /mnt/ssd
+      title: SSD
+      device: /dev/sda
+      io_device: sda
+      smart: true
+```
+
+| Parameter | Required | Type | Example/default | Purpose |
+| --- | --- | --- | --- | --- |
+| `mount` | yes | path string | `/mnt/ssd` | Mounted filesystem whose capacity is measured. |
+| `title` | no | string | `SSD` | Card title. |
+| `device` | no* | string | `/dev/sda` | Physical block device passed to `smartctl`; required when `smart: true`. Also used as an I/O device fallback. |
+| `io_device` | no | string | `sda` | Explicit Linux/psutil diskstats key used for I/O rates. |
+| `smart` | no | boolean | `false` | Enable SMART health polling for this device. |
+
+When `io_device` is omitted, the module first tries `device`, then the block-device source detected for the mount point. For mapped/LVM/RAID setups, an explicit `io_device` is often clearer.
+
+## Available cards
+
+For every alias below `devices`, the following cards are generated:
+
+| Card | Display |
+| --- | --- |
+| `storage.<alias>` | Used percentage and used/total GiB |
+| `storage.<alias>_ring` | Used percentage as a ring |
+| `storage.<alias>_free` | Free capacity in GiB |
+| `storage.<alias>_io` | Current read and write rate |
+| `storage.<alias>_smart` | SMART status and temperature |
+
+The base card `storage` displays how many configured filesystems are mounted and reports SMART failures when enabled.
+
+For the default `storage: {}` configuration the generated device cards are:
+
+```text
+storage.root
+storage.root_ring
+storage.root_free
+storage.root_io
+storage.root_smart
+```
+
+## Polling
+
+- **fast**: read/write byte counters and calculated I/O rates
+- **medium**: mount state and filesystem capacity
+- **slow**: optional SMART health and temperature
+
+With default scheduler values this corresponds to approximately 1, 60 and 600 seconds.
+
+## SMART
+
+SMART is disabled by default. To enable it:
+
+```yaml
+storage:
+  smartctl: smartctl
+  devices:
+    ssd:
+      mount: /mnt/ssd
+      title: SSD
+      device: /dev/sda
+      io_device: sda
+      smart: true
+```
+
+The target system must have `smartctl` available, normally from the `smartmontools` package. The dashboard service also needs permission to query the device.
+
+The module runs an equivalent of:
+
+```text
+smartctl -j -H -A /dev/sda
+```
+
+Typical card values include `PASSED`, `FAILED`, `UNKNOWN`, `UNAVAILABLE` and `DISABLED`. When reported by SMART/NVMe data, temperature is shown in the detail line.
+
+## Multiple-device example
+
+```yaml
+storage:
+  smartctl: smartctl
+  devices:
+    root:
+      mount: /
+      title: ROOT
+      device: ''
+      io_device: ''
       smart: false
 
     ssd:
@@ -52,43 +140,9 @@ storage:
       device: /dev/nvme0n1
       io_device: nvme0n1
       smart: true
-```
 
-Each device alias must be unique. The alias becomes part of the dashboard card
-name.
-
-### Device options
-
-| Option | Meaning |
-| --- | --- |
-| `mount` | Filesystem mountpoint used for capacity/free-space information |
-| `title` | Optional display title; otherwise the alias is used |
-| `device` | Physical block device used by SMART, e.g. `/dev/sda` or `/dev/nvme0n1` |
-| `io_device` | Linux/psutil disk-counter name, e.g. `sda`, `mmcblk0` or `nvme0n1` |
-| `smart` | Enable SMART polling for this device; default `false` |
-
-If `io_device` is omitted, the module first uses `device` and then attempts to
-use the block-device source of the configured mountpoint. Explicit
-`io_device` is recommended for device-mapper, RAID or unusual mount layouts.
-
-## Available cards
-
-For every configured alias, the following cards are generated:
-
-| Card | Information |
-| --- | --- |
-| `storage` | Overall mounted-device count and SMART summary |
-| `storage.<alias>` | Used percentage and used/total capacity |
-| `storage.<alias>_ring` | Used percentage as ring |
-| `storage.<alias>_free` | Free capacity |
-| `storage.<alias>_io` | Current read and write throughput |
-| `storage.<alias>_smart` | SMART health and temperature when available |
-
-Example:
-
-```yaml
 PAGES:
-  - name: disks
+  - name: storage
     layout:
       row1cell1: storage
       row1cell2: storage.ssd_ring
@@ -101,64 +155,6 @@ PAGES:
       row3cell3: storage.nvme_smart
 ```
 
-The usage ring uses the same thresholds and green-to-red color scale as the
-system CPU/RAM/disk rings.
+## Notes
 
-## Polling
-
-Storage information uses the existing dashboard scheduler:
-
-- **fast**: disk read/write rate (`FAST_INTERVAL`, default 1 second)
-- **medium**: mount and capacity information (`MEDIUM_INTERVAL`, default 60 seconds)
-- **slow**: SMART health and temperature (`SLOW_INTERVAL`, default 600 seconds)
-
-The first I/O sample shows `WAIT`, because two counter samples are required to
-calculate a rate.
-
-## SMART support
-
-SMART is optional and does not add a Python dependency. The module executes the
-system `smartctl` command only for devices with `smart: true`.
-
-On Raspberry Pi OS / Debian / Ubuntu:
-
-```shell
-sudo apt-get install smartmontools
-```
-
-The default command is `smartctl`. It can be changed if necessary:
-
-```yaml
-storage:
-  smartctl: /usr/sbin/smartctl
-  devices:
-    ssd:
-      mount: /mnt/ssd
-      device: /dev/sda
-      io_device: sda
-      smart: true
-```
-
-SMART card states include:
-
-- `PASSED` - device reports healthy SMART status
-- `FAILED` - device reports a SMART failure
-- `UNKNOWN` - smartctl returned data but no supported health result
-- `UNAVAILABLE` - smartctl executable was not found
-- `ERROR` - smartctl could not be executed or returned unusable output
-- `DISABLED` - SMART was intentionally disabled for this device
-
-If smartctl reports a temperature, it is displayed in the card detail line.
-Some USB-to-SATA bridges, SD cards and storage controllers do not expose SMART
-information. In those cases keep `smart: false` or use the controller-specific
-smartctl configuration outside the dashboard.
-
-## Typical Raspberry Pi device names
-
-| Storage | `device` example | `io_device` example |
-| --- | --- | --- |
-| microSD | `/dev/mmcblk0` | `mmcblk0` |
-| USB/SATA SSD | `/dev/sda` | `sda` |
-| NVMe SSD | `/dev/nvme0n1` | `nvme0n1` |
-
-Use `lsblk` to verify the real device and mountpoint on the target Raspberry Pi.
+A missing/unmounted filesystem is reported as `UNMOUNTED`. The legacy `system` module also contains `hdd`, `disk_free` and `disk_ring` cards for `/`; use this Storage module when multiple mounts, I/O rates or SMART are required.

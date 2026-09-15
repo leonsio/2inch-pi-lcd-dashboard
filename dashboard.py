@@ -15,12 +15,12 @@ try:
     cfg = load_config()
 except ConfigError as error:
     raise SystemExit(f"Configuration error: {error}") from None
-from dashboard_buttons import DashboardButtons
+from lib.dashboard_buttons import DashboardButtons
 from api.registry import load_modules
 
 modules = load_modules(cfg)
-from dashboard_navigation import DashboardNavigator
-from dashboard_renderer import DashboardRenderer
+from lib.dashboard_navigation import DashboardNavigator
+from lib.dashboard_renderer import DashboardRenderer
 from lcd.display_factory import create_display
 
 

@@ -31,6 +31,9 @@ MODULES = {
     "docker": ("dashboard_modules.docker", {
         "socket": "/var/run/docker.sock", "containers": {},
     }, "docker docker_ring"),
+    "rest": ("dashboard_modules.rest", {
+        "endpoints": {},
+    }, ""),
 }
 
 
@@ -46,6 +49,8 @@ def available_cards(data):
                  data.get("proxmox", {}).get("vms", {}))
     cards.update("docker." + name for name in
                  data.get("docker", {}).get("containers", {}))
+    cards.update("rest." + name for name in
+                 data.get("rest", {}).get("endpoints", {}))
     return cards
 
 

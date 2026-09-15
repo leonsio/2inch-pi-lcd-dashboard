@@ -146,6 +146,64 @@ def _validate_docker(data):
                      f"docker.containers.{alias}.title must be a non-empty string")
 
 
+def _validate_rest(data):
+    if "rest" not in data:
+        return
+    endpoints = data["rest"].get("endpoints", {})
+    _require(isinstance(endpoints, dict), "rest.endpoints must be a mapping")
+    from urllib.parse import urlsplit
+
+    allowed = {
+        "url", "interval", "path", "title", "unit", "precision", "detail",
+        "detail_path", "headers", "verify_ssl",
+    }
+    for alias, item in endpoints.items():
+        _validate_named_alias(alias, "REST card")
+        _require(isinstance(item, dict), f"rest.endpoints.{alias} must be a mapping")
+        _require(set(item) <= allowed, f"rest.endpoints.{alias}: unknown option")
+
+        raw_url = item.get("url")
+        _require(isinstance(raw_url, str) and bool(raw_url.strip()),
+                 f"rest.endpoints.{alias}.url is required")
+        try:
+            parsed = urlsplit(raw_url)
+            valid_url = (
+                parsed.scheme in ("http", "https")
+                and bool(parsed.hostname)
+                and parsed.username is None
+                and parsed.password is None
+                and not parsed.fragment
+            )
+        except ValueError:
+            valid_url = False
+        _require(valid_url,
+                 f"rest.endpoints.{alias}.url must be an HTTP(S) URL without credentials or fragment")
+
+        interval = item.get("interval", 60)
+        _require(type(interval) is int and interval in (1, 60, 600),
+                 f"rest.endpoints.{alias}.interval must be 1, 60 or 600 seconds")
+        for key in ("path", "title", "unit", "detail", "detail_path"):
+            if key in item:
+                _require(isinstance(item[key], str),
+                         f"rest.endpoints.{alias}.{key} must be a string")
+        if "title" in item:
+            _require(bool(item["title"].strip()),
+                     f"rest.endpoints.{alias}.title must be non-empty")
+        if "precision" in item:
+            _require(type(item["precision"]) is int and 0 <= item["precision"] <= 10,
+                     f"rest.endpoints.{alias}.precision must be 0..10")
+        if "verify_ssl" in item:
+            _require(type(item["verify_ssl"]) is bool,
+                     f"rest.endpoints.{alias}.verify_ssl must be true or false")
+        headers = item.get("headers", {})
+        _require(
+            isinstance(headers, dict)
+            and all(isinstance(k, str) and bool(k.strip()) and isinstance(v, str)
+                    for k, v in headers.items()),
+            f"rest.endpoints.{alias}.headers must map header names to strings",
+        )
+
+
 def _validate_modules(data):
     for name, (_, defaults, _) in MODULES.items():
         if name not in data:
@@ -185,6 +243,7 @@ def _validate_modules(data):
         _require(bool(re.fullmatch(r"[a-z0-9_]+\.[a-z0-9_]+", value)), f"adguard.{key} must be an entity ID")
     _validate_proxmox_vms(data)
     _validate_docker(data)
+    _validate_rest(data)
 
 
 def _validate_pages(data):

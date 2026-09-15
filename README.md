@@ -9,8 +9,9 @@ Configure the dashboard in **YAML**, without editing Python source code:
 
 - CPU, temperature, frequency, memory, swap, disk, free space, processes, uptime and system load
 - IP address, hostname, network interface, link speed, live RX/TX traffic and Wi-Fi signal quality
-- Optional Home Assistant, AdGuard, OpenCCU/piVCCU, Pi-hole v6, Proxmox and Docker modules
+- Optional Home Assistant, AdGuard, OpenCCU/piVCCU, Pi-hole v6, Proxmox, Docker and generic REST modules
 - Individual Proxmox VM/LXC and Docker container status cards
+- Generic JSON REST values with configurable 1/60/600-second polling and custom HTTP headers
 - Multiple Home Assistant sensors, switches and other entity states on custom cards
 - Classic cards and ring displays in a configurable grid
 - Multiple overview pages and detail pages with optional GPIO buttons
@@ -19,7 +20,8 @@ Configure the dashboard in **YAML**, without editing Python source code:
 Start with [config.example.yaml](config.example.yaml). The
 [configuration guide](docs/Configuration.md) contains the complete option
 reference and configuration examples. Extended System, Network, Proxmox and Docker
-examples are also documented in [docs/ExtendedModules.md](docs/ExtendedModules.md).
+examples are documented in [docs/ExtendedModules.md](docs/ExtendedModules.md), and
+the generic REST integration is documented in [docs/REST.md](docs/REST.md).
 
 ## Disclaimer
 
@@ -131,8 +133,9 @@ Omitted global settings inherit from `config.example.yaml`; `PAGES` replaces the
 example page list. Modules load only when their block is present, such as `system: {}`,
 `network: {}` or a `pihole` block with its connection settings. Remove a block to
 disable its module. See the [module and entity examples](docs/Configuration.md#14-multiple-home-assistant-entities)
-for sensors, switches and other Home Assistant cards. Use `true`/`false` for booleans, `null` for no value, and quote
-colors such as `'#FFFFFF'`. `SHOW_PER_CORE: false` displays average CPU usage
+for sensors, switches and other Home Assistant cards, or [docs/REST.md](docs/REST.md)
+for arbitrary JSON REST APIs. Use `true`/`false` for booleans, `null` for no value,
+and quote colors such as `'#FFFFFF'`. `SHOW_PER_CORE: false` displays average CPU usage
 (0–100%); `true` sums all cores (0–400% on a four-core Pi).
 
 The installer installs PyYAML and checks the configuration before starting the

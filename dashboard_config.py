@@ -39,7 +39,6 @@ def _read(path):
     try:
         data = yaml.load(path.read_text(encoding="utf-8"), Loader=_UniqueSafeLoader)
     except (OSError, yaml.YAMLError) as error:
-        # Parser errors can contain source snippets with credentials.
         mark = getattr(error, "problem_mark", None)
         location = f" at line {mark.line + 1}, column {mark.column + 1}" if mark else ""
         raise ConfigError(f"Cannot read YAML configuration {path}{location}") from None
@@ -100,6 +99,53 @@ def _validate(data, defaults):
     _validate_pages(data)
 
 
+def _validate_named_alias(alias, label):
+    _require(
+        isinstance(alias, str) and bool(re.fullmatch(r"[a-z0-9_]+", alias)),
+        f"{label} names must use lowercase letters, digits and underscores",
+    )
+
+
+def _validate_proxmox_vms(data):
+    vms = data.get("proxmox", {}).get("vms", {})
+    _require(isinstance(vms, dict), "proxmox.vms must be a mapping")
+    for alias, item in vms.items():
+        _validate_named_alias(alias, "Proxmox VM card")
+        if type(item) is int:
+            _require(item > 0, f"proxmox.vms.{alias} must use a positive VMID")
+            continue
+        _require(isinstance(item, dict), f"proxmox.vms.{alias} must be a VMID or mapping")
+        _require(set(item) <= {"vmid", "title"}, f"proxmox.vms.{alias}: unknown option")
+        _require(type(item.get("vmid")) is int and item["vmid"] > 0,
+                 f"proxmox.vms.{alias}.vmid must be a positive integer")
+        if "title" in item:
+            _require(isinstance(item["title"], str) and bool(item["title"].strip()),
+                     f"proxmox.vms.{alias}.title must be a non-empty string")
+
+
+def _validate_docker(data):
+    if "docker" not in data:
+        return
+    block = data["docker"]
+    socket_path = block["socket"]
+    _require(isinstance(socket_path, str) and bool(socket_path.strip()), "docker.socket is required")
+    _require(Path(socket_path).is_absolute(), "docker.socket must be an absolute Unix socket path")
+    containers = block.get("containers", {})
+    _require(isinstance(containers, dict), "docker.containers must be a mapping")
+    for alias, item in containers.items():
+        _validate_named_alias(alias, "Docker container card")
+        if isinstance(item, str):
+            _require(bool(item.strip()), f"docker.containers.{alias} must not be empty")
+            continue
+        _require(isinstance(item, dict), f"docker.containers.{alias} must be a container name or mapping")
+        _require(set(item) <= {"name", "title"}, f"docker.containers.{alias}: unknown option")
+        _require(isinstance(item.get("name"), str) and bool(item["name"].strip()),
+                 f"docker.containers.{alias}.name is required")
+        if "title" in item:
+            _require(isinstance(item["title"], str) and bool(item["title"].strip()),
+                     f"docker.containers.{alias}.title must be a non-empty string")
+
+
 def _validate_modules(data):
     for name, (_, defaults, _) in MODULES.items():
         if name not in data:
@@ -137,6 +183,8 @@ def _validate_modules(data):
         _require(isinstance(labels, dict) and all(isinstance(v, str) for v in labels.values()), f"home_assistant.entities.{name}.state_labels must map quoted strings to strings")
     for key, value in data.get("adguard", {}).items():
         _require(bool(re.fullmatch(r"[a-z0-9_]+\.[a-z0-9_]+", value)), f"adguard.{key} must be an entity ID")
+    _validate_proxmox_vms(data)
+    _validate_docker(data)
 
 
 def _validate_pages(data):
@@ -187,7 +235,6 @@ def load_config(path=None):
     data = {**{k: v for k, v in defaults.items() if k not in MODULES}, **overrides}
     _validate_modules(data)
     if "PAGES" not in overrides:
-        # Shipped pages adapt to enabled modules. Explicit layouts are validated.
         cards = available_cards(data)
         for page in data["PAGES"]:
             page["layout"] = {key: slot for key, slot in page["layout"].items()

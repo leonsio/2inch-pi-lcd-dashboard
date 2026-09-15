@@ -7,9 +7,10 @@
 This project displays Raspberry Pi system and service status on a color SPI LCD.
 Configure the dashboard in **YAML**, without editing Python source code:
 
-- CPU, temperature, memory, disk, uptime and system load
-- IP address, hostname and network interface
-- Optional Home Assistant, AdGuard, OpenCCU/piVCCU, Pi-hole v6 and Proxmox modules
+- CPU, temperature, frequency, memory, swap, disk, free space, processes, uptime and system load
+- IP address, hostname, network interface, link speed, live RX/TX traffic and Wi-Fi signal quality
+- Optional Home Assistant, AdGuard, OpenCCU/piVCCU, Pi-hole v6, Proxmox and Docker modules
+- Individual Proxmox VM/LXC and Docker container status cards
 - Multiple Home Assistant sensors, switches and other entity states on custom cards
 - Classic cards and ring displays in a configurable grid
 - Multiple overview pages and detail pages with optional GPIO buttons
@@ -17,7 +18,8 @@ Configure the dashboard in **YAML**, without editing Python source code:
 
 Start with [config.example.yaml](config.example.yaml). The
 [configuration guide](docs/Configuration.md) contains the complete option
-reference and configuration examples for all integrations.
+reference and configuration examples. Extended System, Network, Proxmox and Docker
+examples are also documented in [docs/ExtendedModules.md](docs/ExtendedModules.md).
 
 ## Disclaimer
 
@@ -119,8 +121,10 @@ PAGES:
       row1cell2: ram_ring
       row1cell3: disk_ring
       row2cell1: temp_ring
-      row2cell2: {module: network, colspan: 2}
-      row3cell1: {module: uptime, colspan: 3}
+      row2cell2: swap_ring
+      row2cell3: wifi_ring
+      row3cell1: {module: traffic, colspan: 2}
+      row3cell3: uptime
 ```
 
 Omitted global settings inherit from `config.example.yaml`; `PAGES` replaces the entire

@@ -20,6 +20,18 @@ def _cpu_temp():
         return None
 
 
+def _cpu_frequency():
+    try:
+        freq = psutil.cpu_freq()
+        if freq is None:
+            return None, None
+        current = float(freq.current or 0)
+        maximum = float(freq.max or 0)
+        return current or None, maximum or None
+    except Exception:
+        return None, None
+
+
 def collect_fast(state, cfg, logger):
     """Values that benefit from a one-second refresh."""
     per_core = bool(getattr(cfg, "SHOW_PER_CORE", False))
@@ -29,17 +41,28 @@ def collect_fast(state, cfg, logger):
         state["cpu_percent"] = psutil.cpu_percent()
 
     state["cpu_temp"] = _cpu_temp()
+    current_freq, max_freq = _cpu_frequency()
+    state["cpu_freq_mhz"] = current_freq
+    state["cpu_freq_max_mhz"] = max_freq
+
     mem = psutil.virtual_memory()
     state["ram_percent"] = mem.percent
     state["ram_used_gb"] = (mem.total - mem.available) / (1024 ** 3)
     state["ram_total_gb"] = mem.total / (1024 ** 3)
 
+    swap = psutil.swap_memory()
+    state["swap_percent"] = swap.percent
+    state["swap_used_gb"] = swap.used / (1024 ** 3)
+    state["swap_total_gb"] = swap.total / (1024 ** 3)
+
     if getattr(cfg, "LOG_FAST_VALUES", False):
         logger.debug(
-            "FAST cpu=%.1f%% temp=%s ram=%.1f%%",
+            "FAST cpu=%.1f%% temp=%s freq=%s ram=%.1f%% swap=%.1f%%",
             state["cpu_percent"],
             "?" if state["cpu_temp"] is None else f'{state["cpu_temp"]:.1f}C',
+            "?" if current_freq is None else f"{current_freq:.0f}MHz",
             state["ram_percent"],
+            state["swap_percent"],
         )
 
 
@@ -48,7 +71,9 @@ def collect_medium(state, cfg, logger):
     disk = psutil.disk_usage("/")
     state["disk_percent"] = disk.percent
     state["disk_used_gb"] = disk.used / (1024 ** 3)
+    state["disk_free_gb"] = disk.free / (1024 ** 3)
     state["disk_total_gb"] = disk.total / (1024 ** 3)
+    state["process_count"] = len(psutil.pids())
 
     uptime_seconds = max(0, int(time.time() - psutil.boot_time()))
     state["uptime_seconds"] = uptime_seconds
@@ -59,8 +84,10 @@ def collect_medium(state, cfg, logger):
 
     if getattr(cfg, "LOG_MEDIUM_VALUES", True):
         logger.info(
-            "MEDIUM disk=%.1f%% uptime=%s load=%.2f/%.2f/%.2f",
+            "MEDIUM disk=%.1f%% free=%.1fGB processes=%d uptime=%s load=%.2f/%.2f/%.2f",
             state["disk_percent"],
+            state["disk_free_gb"],
+            state["process_count"],
             format_uptime(uptime_seconds),
             state["load_1"], state["load_5"], state["load_15"],
         )
@@ -139,12 +166,33 @@ def card_ram(state):
     }
 
 
+def card_swap(state):
+    total = float(state.get("swap_total_gb", 0) or 0)
+    if total <= 0:
+        return {"title": "SWAP", "value": "OFF", "detail": "NOT CONFIGURED", "status": "normal"}
+    return {
+        "title": "SWAP",
+        "value": f"{state.get('swap_percent', 0):.0f}%",
+        "detail": f"{state.get('swap_used_gb', 0):.1f}/{total:.1f}GB",
+        "status": _severity_percent(state.get("swap_percent", 0)),
+    }
+
+
 def card_hdd(state):
     return {
         "title": "HDD",
         "value": f"{state.get('disk_percent', 0):.0f}%",
         "detail": f"{state.get('disk_used_gb', 0):.1f}/{state.get('disk_total_gb', 0):.0f}GB",
         "status": _severity_percent(state.get("disk_percent", 0)),
+    }
+
+
+def card_disk_free(state):
+    return {
+        "title": "DISK FREE",
+        "value": f"{state.get('disk_free_gb', 0):.1f}GB",
+        "detail": f"TOTAL {state.get('disk_total_gb', 0):.0f}GB",
+        "status": "normal",
     }
 
 
@@ -166,8 +214,33 @@ def card_load(state):
     }
 
 
+def card_cpu_freq(state):
+    current = state.get("cpu_freq_mhz")
+    maximum = state.get("cpu_freq_max_mhz")
+    if current is None:
+        return {"title": "CPU FREQ", "value": "?", "detail": "", "status": "normal"}
+    detail = ""
+    if maximum:
+        detail = f"MAX {maximum / 1000.0:.2f}GHz"
+    return {
+        "title": "CPU FREQ",
+        "value": f"{float(current) / 1000.0:.2f}GHz",
+        "detail": detail,
+        "status": "normal",
+    }
+
+
+def card_processes(state):
+    return {
+        "title": "PROCESSES",
+        "value": str(int(state.get("process_count", 0) or 0)),
+        "detail": f"CPU {int(state.get('cpu_count', 1) or 1)} THREADS",
+        "status": "normal",
+    }
+
+
 # -----------------------------------------------------------------------------
-# Optional ring/donut variants. Existing cards above intentionally stay intact.
+# Ring/donut variants.
 # -----------------------------------------------------------------------------
 def card_cpu_ring(state):
     return _ring_percent_card("CPU", state.get("cpu_percent", 0))
@@ -177,8 +250,34 @@ def card_ram_ring(state):
     return _ring_percent_card("RAM", state.get("ram_percent", 0))
 
 
+def card_swap_ring(state):
+    if float(state.get("swap_total_gb", 0) or 0) <= 0:
+        return {
+            "style": "ring", "title": "SWAP", "value": "OFF", "detail": "",
+            "ratio": 0.0, "color_ratio": None, "status": "normal",
+        }
+    return _ring_percent_card("SWAP", state.get("swap_percent", 0))
+
+
 def card_disk_ring(state):
     return _ring_percent_card("DISK", state.get("disk_percent", 0))
+
+
+def card_freq_ring(state):
+    current = float(state.get("cpu_freq_mhz", 0) or 0)
+    maximum = float(state.get("cpu_freq_max_mhz", 0) or 0)
+    ratio = current / maximum if maximum > 0 else 0.0
+    value = "?" if current <= 0 else f"{current / 1000.0:.1f}G"
+    return {
+        "style": "ring",
+        "title": "CPU FREQ",
+        "value": value,
+        "detail": "",
+        "ratio": max(0.0, min(1.0, ratio)),
+        # Frequency itself is not an error condition; keep the ring on the low/green color stop.
+        "color_ratio": 0.0 if current > 0 else None,
+        "status": "normal",
+    }
 
 
 def card_temp_ring(state):
@@ -203,8 +302,6 @@ def card_temp_ring(state):
         "detail": "",
         "ring_metric": "temperature",
         "raw_value": float(temp),
-        # The renderer calculates the temperature ratio from configurable
-        # TEMP_RING_MIN_C/TEMP_RING_MAX_C values.
         "ratio": 0.0,
         "color_ratio": None,
         "status": "normal",
@@ -212,17 +309,20 @@ def card_temp_ring(state):
 
 
 CARD_BUILDERS = {
-    # Existing classic cards
     "cpu": card_cpu,
     "ram": card_ram,
+    "swap": card_swap,
     "hdd": card_hdd,
+    "disk_free": card_disk_free,
     "uptime": card_uptime,
     "load": card_load,
-
-    # New ring cards
+    "cpu_freq": card_cpu_freq,
+    "processes": card_processes,
     "cpu_ring": card_cpu_ring,
     "ram_ring": card_ram_ring,
+    "swap_ring": card_swap_ring,
     "disk_ring": card_disk_ring,
-    "hdd_ring": card_disk_ring,  # alias for existing HDD naming
+    "hdd_ring": card_disk_ring,
+    "freq_ring": card_freq_ring,
     "temp_ring": card_temp_ring,
 }

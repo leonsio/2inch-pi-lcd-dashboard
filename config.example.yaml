@@ -71,6 +71,18 @@ network: {}
 #   api_token_secret: YOUR_TOKEN_SECRET
 #   verify_ssl: true
 #   include_lxc: false
+#   vms:
+#     homeassistant:
+#       vmid: 100
+#       title: Home Assistant
+#     dockerhost: 101
+# docker:
+#   socket: /var/run/docker.sock
+#   containers:
+#     homeassistant:
+#       name: homeassistant
+#       title: Home Assistant
+#     mqtt: mosquitto
 
 # Grid and selection
 GRID_ROWS: 3
@@ -131,6 +143,11 @@ PAGES:
     row2cell3:
       module: temp_ring
       target_page: metrics_detail
+    row3cell1: swap_ring
+    row3cell2:
+      module: traffic
+      colspan: 2
+      target_page: network_detail
 - name: system_detail
   navigation: detail
   layout:
@@ -138,17 +155,22 @@ PAGES:
     row1cell2: ram
     row1cell3: load
     row2cell1: uptime
-    row2cell2:
-      module: hostname
-      colspan: 2
+    row2cell2: cpu_freq
+    row2cell3: processes
+    row3cell1: swap
+    row3cell2: swap_ring
+    row3cell3: freq_ring
 - name: storage_detail
   navigation: detail
   layout:
     row1cell1:
       module: hdd
       colspan: 3
-    row2cell1: uptime
-    row2cell2:
+    row2cell1: disk_free
+    row2cell2: swap
+    row2cell3: swap_ring
+    row3cell1: disk_ring
+    row3cell2:
       module: hostname
       colspan: 2
 - name: network_detail
@@ -157,20 +179,26 @@ PAGES:
     row1cell1:
       module: network
       colspan: 3
-    row2cell1:
-      module: ip
+    row2cell1: network_rx
+    row2cell2: network_tx
+    row2cell3: network_link
+    row3cell1: wifi_ring
+    row3cell2:
+      module: traffic
       colspan: 2
-    row2cell3: hostname
 - name: metrics_detail
   navigation: detail
   layout:
     row1cell1: cpu_ring
     row1cell2: ram_ring
     row1cell3: temp_ring
-    row2cell1:
-      module: network
+    row2cell1: disk_ring
+    row2cell2: swap_ring
+    row2cell3: freq_ring
+    row3cell1:
+      module: traffic
       colspan: 2
-    row2cell3: uptime
+    row3cell3: network_link
 
 # Fonts and theme (quote all colors)
 FONT_PATH: ./font/JetBrainsMono-Medium.ttf

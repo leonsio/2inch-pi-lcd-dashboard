@@ -14,6 +14,15 @@ MODULES = {
                "cpu_ring ram_ring swap_ring disk_ring hdd_ring freq_ring temp_ring"),
     "network": ("dashboard_modules.network", {},
                 "ip hostname network traffic network_rx network_tx network_link wifi wifi_ring"),
+    "storage": ("dashboard_modules.storage", {
+        "devices": {
+            "root": {
+                "mount": "/", "title": "ROOT", "device": "",
+                "io_device": "", "smart": False,
+            },
+        },
+        "smartctl": "smartctl",
+    }, "storage"),
     "power": ("dashboard_modules.power", {}, "shutdown reboot"),
     "pihole": ("dashboard_modules.pihole", {"url": "", "password": "", "verify_ssl": True}, "pihole pi_hole"),
     "pivccu": ("dashboard_modules.pivccu", {"ip": "", "token": ""}, "pivccu openccu"),
@@ -51,6 +60,14 @@ def available_cards(data):
                  data.get("docker", {}).get("containers", {}))
     cards.update("rest." + name for name in
                  data.get("rest", {}).get("endpoints", {}))
+    for name in data.get("storage", {}).get("devices", {}):
+        cards.update({
+            f"storage.{name}",
+            f"storage.{name}_ring",
+            f"storage.{name}_free",
+            f"storage.{name}_io",
+            f"storage.{name}_smart",
+        })
     return cards
 
 

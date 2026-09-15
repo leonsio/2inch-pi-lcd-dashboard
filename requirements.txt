@@ -4,3 +4,4 @@ numpy
 gpiozero
 requests
 lxml
+PyYAML>=6.0,<7

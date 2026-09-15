@@ -27,55 +27,57 @@ The token ID passed to the dashboard must include user, realm and token name, fo
 dashboard@pve!lcd-dashboard
 ```
 
-Keep the token secret only in the local `config.py`. `config.py` is excluded from Git by this project.
+Keep the token secret only in the local `config.yaml`. `config.yaml` is excluded from Git by this project.
 
-## 2. Add the configuration to config.py
+## 2. Add the configuration to config.yaml
 
-```python
+```yaml
 # -----------------------------------------------------------------------------
 # Proxmox VE REST API
 # -----------------------------------------------------------------------------
 # Base URL of the local Proxmox web/API service. Do not append /api2/json.
-PROXMOX_URL = 'https://192.168.2.50:8006'
+PROXMOX_URL: 'https://192.168.2.50:8006'
 
 # Format: user@realm!token-name
-PROXMOX_API_TOKEN_ID = 'dashboard@pve!lcd-dashboard'
-PROXMOX_API_TOKEN_SECRET = 'YOUR_PROXMOX_API_TOKEN_SECRET'
+PROXMOX_API_TOKEN_ID: 'dashboard@pve!lcd-dashboard'
+PROXMOX_API_TOKEN_SECRET: 'YOUR_PROXMOX_API_TOKEN_SECRET'
 
 # Local Proxmox installations often use a self-signed certificate.
 # False accepts that certificate. True requires normal certificate validation.
-PROXMOX_VERIFY_SSL = False
+PROXMOX_VERIFY_SSL: false
 
 # False = count QEMU virtual machines only.
 # True  = count QEMU VMs and LXC containers together.
-PROXMOX_INCLUDE_LXC = False
+PROXMOX_INCLUDE_LXC: false
 ```
 
 The global `REQUEST_TIMEOUT` setting is reused for Proxmox API requests.
 
 ## 3. Add the module to a page
 
+Insert these snippets inside a page’s `layout` mapping. See the
+[configuration guide](Configuration.md) for complete page examples.
+
 Simple 1x1 rectangular block:
 
-```python
-'row2cell3': 'proxmox',
+```yaml
+row2cell3: proxmox
 ```
 
 With button navigation:
 
-```python
-'row2cell3': {
-    'module': 'proxmox',
-    'selectable': True,
-},
+```yaml
+row2cell3:
+  module: proxmox
+  selectable: true
 ```
 
 Informational only, so PREVIOUS/NEXT skips it:
 
-```python
+```yaml
 'row2cell3': {
     'module': 'proxmox',
-    'selectable': False,
+    'selectable': false,
 },
 ```
 

@@ -14,15 +14,19 @@
 
 ***This repository is part of the [Web3 Pi](https://www.web3pi.io) initiative, which enables the automated deployment of a full Ethereum node on a Raspberry Pi.***
 
-This project allows you to install a color LCD display in the Argon Neo 5 case and display the following system parameters:
+This project displays Raspberry Pi system and service status on a color SPI LCD.
+Configure the dashboard in **YAML**, without editing Python source code:
 
-- CPU Usage
-- CPU Temperature
-- RAM Usage
-- SWAP Memory Usage
-- Storage Usage
-- IP / Hostname
-- Network Traffic (eth0/WiFi)
+- CPU, temperature, memory, disk, uptime and system load
+- IP address, hostname and network interface
+- Home Assistant, AdGuard, OpenCCU/piVCCU, Pi-hole v6 and Proxmox status
+- Classic cards and ring displays in a configurable grid
+- Multiple overview pages and detail pages with optional GPIO buttons
+- Optional shutdown and reboot buttons with a preparation command
+
+Start with [config.example.yaml](config.example.yaml). The
+[configuration guide](docs/Configuration.md) contains the complete option
+reference and 13 configuration examples.
 
 We have designed our own 3D model of the enclosure cover with a space for the display. The assembly is simple, using snap-fits, with no tools required. The models are open-source, so anyone can print them on a 3D printer. The source code is also open-source, allowing users to add new functionalities, customize it to their needs, or add support for new displays.
 
@@ -36,7 +40,8 @@ Raspberry Pi is a trademark of Raspberry Pi Ltd. The use of this trademark here 
 - Run on Raspberry Pi 4 and 5
 - Raspberry Pi OS or Ubuntu
 - [SPI interface enabled](docs/EnableSPI.md)
-- 1.69" LCD display with ST7789V2 Driver
+- A supported SPI LCD: 2-inch (default, landscape 320×240) or 1.69-inch (280×240)
+- For the 1.69-inch ST7789V2 display:
   - Waveshare 24382 - [product page](https://www.waveshare.com/1.69inch-lcd-module.htm)
   - Seeed Studio 104990802 - [product page](https://www.seeedstudio.com/1-69inch-240-280-Resolution-IPS-LCD-Display-Module-p-5755.html)
 - (Optional) 3D printed model of Argon Neo 5 cover
@@ -78,8 +83,21 @@ Download the repository.
 
 ```shell
 sudo apt-get -y install git
-git clone https://github.com/Web3-Pi/raspberry-pi-lcd-dashboard.git
+git clone https://github.com/leonsio/2inch-pi-lcd-dashboard.git
 ```
+
+Create your local configuration before starting the dashboard:
+
+```shell
+cd 2inch-pi-lcd-dashboard
+cp config.example.yaml config.yaml
+nano config.yaml
+```
+
+Choose `LCD_DEVICE: '2inch'` or `LCD_DEVICE: '1inch69'`, enter your service
+addresses/tokens and customize the pages. `config.yaml` is excluded from Git.
+Commands below assume you start in the parent directory; if already inside the
+repository, omit the repeated `cd`.
 
 Then, you can run the program as a service. The program will start automatically with the system startup.  
 Alternatively, you can run it once. The program will stop when you close the console.
@@ -87,7 +105,7 @@ Alternatively, you can run it once. The program will stop when you close the con
 ### Run as a service - (recommended)   
 
 ```shell
-cd raspberry-pi-lcd-dashboard
+cd 2inch-pi-lcd-dashboard
 chmod +x *.sh
 sudo ./create_service.sh
 ```
@@ -102,29 +120,49 @@ If you do not want to run the program as a service, you can run it once.
 Note: Do not use both methods simultaneously.
 
 ```shell
-cd raspberry-pi-lcd-dashboard
+cd 2inch-pi-lcd-dashboard
 chmod +x *.sh
 sudo ./run.sh
 ```
 To stop the program, press Ctrl+C.
 
-## Customisation
+## Configuration
 
-In the file `dashboard.py`, there is a flag `SHOW_PER_CORE` that determines whether the CPU usage percentage should be in the range of `0-100%` or `0-400%`.
+Edit `config.yaml` in the repository directory. For example:
 
-0-400% represents the summed load of each core in the Raspberry Pi.
-
-```python
-# Choose how to display CPU usage percentages
-SHOW_PER_CORE = False
-# False = [0 - 100%]
-# True  = [0 - 400%]
+```yaml
+LCD_DEVICE: '2inch'
+SHOW_PER_CORE: false
+DISPLAY_BACKLIGHT: 80
+BUTTONS_ENABLED: false
+PAGES:
+  - name: system
+    layout:
+      row1cell1: cpu_ring
+      row1cell2: ram_ring
+      row1cell3: disk_ring
+      row2cell1: temp_ring
+      row2cell2: {module: network, colspan: 2}
+      row3cell1: {module: uptime, colspan: 3}
 ```
-note: Restart the service after making changes.   
+
+Omitted settings inherit from `config.example.yaml`; `PAGES` replaces the entire
+example page list. Use `true`/`false` for booleans, `null` for no value, and quote
+colors such as `'#FFFFFF'`. `SHOW_PER_CORE: false` displays average CPU usage
+(0–100%); `true` sums all cores (0–400% on a four-core Pi).
+
+The installer installs PyYAML and checks the configuration before starting the
+service. You can also validate without accessing the hardware:
+
 ```shell
+sudo ./run.sh --prepare-only
+venv/bin/python dashboard_config.py
 sudo systemctl restart dashboard.service
 ```
 
+For display selection, GPIO wiring, page navigation, spanning cards, themes,
+fonts, polling, service APIs and power actions, see the
+[extended configuration documentation](docs/Configuration.md).
 
 ## 3D Model
 

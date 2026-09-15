@@ -44,7 +44,7 @@ def _get(cfg, path, params=None):
 
     # Local Proxmox installations commonly use their own/self-signed
     # certificate. Suppress only urllib3's expected warning when verification
-    # is deliberately disabled in config.py.
+    # is deliberately disabled in config.yaml.
     with warnings.catch_warnings():
         if not verify_ssl:
             warnings.simplefilter("ignore", InsecureRequestWarning)

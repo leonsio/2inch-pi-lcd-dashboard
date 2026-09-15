@@ -42,6 +42,30 @@ BUTTON_BOUNCE_TIME: 0.08
 # Remove a block to stop loading and polling that module.
 system: {}
 network: {}
+# Replace `network: {}` with the block below to enable WAN/public-IP checks.
+# Intervals are symbolic and follow FAST_INTERVAL/MEDIUM_INTERVAL/SLOW_INTERVAL.
+# network:
+#   wan:
+#     enabled: true
+#     target: 1.1.1.1
+#     interval: medium   # fast, medium or slow
+#     timeout: 1.0
+#   external_ipv4:
+#     enabled: true
+#     url: https://api.ipify.org
+#     interval: slow     # fast, medium or slow
+#     verify_ssl: true
+#   checks:
+#     router:
+#       ip: 192.168.1.1
+#       title: Router
+#       interval: fast
+#       timeout: 1.0
+#     dns:
+#       ip: 8.8.8.8
+#       title: Google DNS
+#       interval: medium
+#       timeout: 1.0
 # storage: {}  # Root filesystem; see docs/Storage.md for multiple disks and SMART
 # power: {}  # Enables shutdown/reboot cards
 

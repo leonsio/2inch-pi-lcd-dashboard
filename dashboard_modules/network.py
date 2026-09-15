@@ -1,10 +1,20 @@
-"""Network information and traffic metrics for the dashboard."""
+"""Network information, traffic metrics and optional WAN reachability checks."""
 
+import ipaddress
+import math
+import shutil
 import socket
+import subprocess
 import time
+import warnings
 
 import netifaces
 import psutil
+import requests
+from urllib3.exceptions import InsecureRequestWarning
+
+
+_INTERVALS = {"fast", "medium", "slow"}
 
 
 def _find_ip(preferred_interfaces):
@@ -40,7 +50,6 @@ def _wireless_info(interface):
                     return None, None
                 quality = float(fields[1].rstrip("."))
                 signal = float(fields[2].rstrip("."))
-                # Linux wireless quality is traditionally reported on a 0..70 scale.
                 quality_percent = max(0.0, min(100.0, quality / 70.0 * 100.0))
                 return quality_percent, signal
     except (OSError, ValueError):
@@ -70,54 +79,183 @@ def _format_bytes(value):
     return f"{value:.0f}B"
 
 
-def collect_fast(state, cfg, logger):
-    """Calculate per-interface receive/transmit rates from counter deltas."""
-    interface = state.get("network_interface")
-    if not interface:
-        state["network_rx_rate"] = 0.0
-        state["network_tx_rate"] = 0.0
-        return
+def _interval(item, default="medium"):
+    value = str((item or {}).get("interval", default)).lower()
+    return value if value in _INTERVALS else default
 
-    counters = psutil.net_io_counters(pernic=True).get(interface)
+
+def _timeout(item, default=1.0):
+    try:
+        value = float((item or {}).get("timeout", default))
+    except (TypeError, ValueError):
+        value = default
+    return max(0.1, min(30.0, value))
+
+
+def _ipv4(value):
+    try:
+        return str(ipaddress.IPv4Address(str(value).strip()))
+    except (ipaddress.AddressValueError, ValueError):
+        return None
+
+
+def _ping_ipv4(target, timeout):
+    """Return a reachability snapshot using one ICMP echo request."""
+    target = _ipv4(target)
+    if not target:
+        return {"target": str(target or ""), "online": None, "latency_ms": None, "error": "CONFIG"}
+
+    executable = shutil.which("ping")
+    if not executable:
+        return {"target": target, "online": None, "latency_ms": None, "error": "PING"}
+
+    started = time.monotonic()
+    wait_seconds = max(1, int(math.ceil(timeout)))
+    try:
+        result = subprocess.run(
+            [executable, "-n", "-c", "1", "-W", str(wait_seconds), target],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=timeout + 1.0,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        return {"target": target, "online": False, "latency_ms": None, "error": "TIMEOUT"}
+    except OSError:
+        return {"target": target, "online": None, "latency_ms": None, "error": "PING"}
+
+    elapsed_ms = (time.monotonic() - started) * 1000.0
+    return {
+        "target": target,
+        "online": result.returncode == 0,
+        "latency_ms": elapsed_ms if result.returncode == 0 else None,
+        "error": "" if result.returncode == 0 else "",
+    }
+
+
+def _fetch_external_ipv4(item, cfg):
+    url = str((item or {}).get("url") or "https://api.ipify.org").strip()
+    verify_ssl = bool((item or {}).get("verify_ssl", True))
+    timeout = float(getattr(cfg, "REQUEST_TIMEOUT", 5))
+    try:
+        with warnings.catch_warnings():
+            if not verify_ssl:
+                warnings.simplefilter("ignore", InsecureRequestWarning)
+            response = requests.get(
+                url,
+                headers={"Accept": "text/plain"},
+                timeout=timeout,
+                verify=verify_ssl,
+            )
+        if response.status_code in (401, 403):
+            return {"ip": None, "error": "AUTH"}
+        if response.status_code >= 400:
+            return {"ip": None, "error": f"HTTP {response.status_code}"}
+        address = _ipv4(response.text)
+        if not address:
+            return {"ip": None, "error": "INVALID"}
+        return {"ip": address, "error": ""}
+    except requests.RequestException:
+        return {"ip": None, "error": "OFFLINE"}
+
+
+def _ping_cached(target, timeout, cache):
+    normalized = _ipv4(target)
+    key = (normalized or str(target), float(timeout))
+    if key not in cache:
+        cache[key] = _ping_ipv4(target, timeout)
+    return dict(cache[key])
+
+
+def _collect_monitoring(state, cfg, logger, group):
+    block = getattr(cfg, "network", {}) or {}
+    cache = {}
+    polled = 0
+
+    wan = block.get("wan", {}) or {}
+    if bool(wan.get("enabled", False)) and _interval(wan) == group:
+        state["wan_status"] = _ping_cached(
+            wan.get("target", "1.1.1.1"), _timeout(wan), cache
+        )
+        polled += 1
+
+    external = block.get("external_ipv4", {}) or {}
+    if bool(external.get("enabled", False)) and _interval(external, "slow") == group:
+        state["external_ipv4"] = _fetch_external_ipv4(external, cfg)
+        polled += 1
+
+    results = dict(state.get("network_checks") or {})
+    for alias, item in (block.get("checks", {}) or {}).items():
+        if not isinstance(item, dict) or _interval(item) != group:
+            continue
+        results[alias] = _ping_cached(item.get("ip", ""), _timeout(item), cache)
+        polled += 1
+    state["network_checks"] = results
+
+    setting = {
+        "fast": "LOG_FAST_VALUES",
+        "medium": "LOG_MEDIUM_VALUES",
+        "slow": "LOG_SLOW_VALUES",
+    }[group]
+    if polled and getattr(cfg, setting, group != "fast"):
+        online = 0
+        if group == _interval(wan) and state.get("wan_status", {}).get("online") is True:
+            online += 1
+        online += sum(
+            1 for alias, item in (block.get("checks", {}) or {}).items()
+            if isinstance(item, dict)
+            and _interval(item) == group
+            and results.get(alias, {}).get("online") is True
+        )
+        log = logger.debug if group == "fast" else logger.info
+        log("%s network monitoring checks=%d online=%d", group.upper(), polled, online)
+
+
+def collect_fast(state, cfg, logger):
+    """Calculate traffic rates and run optional fast WAN/IP checks."""
+    interface = state.get("network_interface")
+    counters = psutil.net_io_counters(pernic=True).get(interface) if interface else None
+
     if counters is None:
         state["network_rx_rate"] = 0.0
         state["network_tx_rate"] = 0.0
-        return
+    else:
+        now = time.monotonic()
+        previous_interface = state.get("_network_prev_interface")
+        previous_time = state.get("_network_prev_time")
+        previous_recv = state.get("_network_prev_recv")
+        previous_sent = state.get("_network_prev_sent")
 
-    now = time.monotonic()
-    previous_interface = state.get("_network_prev_interface")
-    previous_time = state.get("_network_prev_time")
-    previous_recv = state.get("_network_prev_recv")
-    previous_sent = state.get("_network_prev_sent")
+        rx_rate = tx_rate = 0.0
+        if (
+            previous_interface == interface
+            and previous_time is not None
+            and previous_recv is not None
+            and previous_sent is not None
+            and now > previous_time
+        ):
+            elapsed = now - previous_time
+            rx_rate = max(0.0, (counters.bytes_recv - previous_recv) / elapsed)
+            tx_rate = max(0.0, (counters.bytes_sent - previous_sent) / elapsed)
 
-    rx_rate = tx_rate = 0.0
-    if (
-        previous_interface == interface
-        and previous_time is not None
-        and previous_recv is not None
-        and previous_sent is not None
-        and now > previous_time
-    ):
-        elapsed = now - previous_time
-        rx_rate = max(0.0, (counters.bytes_recv - previous_recv) / elapsed)
-        tx_rate = max(0.0, (counters.bytes_sent - previous_sent) / elapsed)
+        state["network_rx_rate"] = rx_rate
+        state["network_tx_rate"] = tx_rate
+        state["network_rx_bytes"] = counters.bytes_recv
+        state["network_tx_bytes"] = counters.bytes_sent
+        state["_network_prev_interface"] = interface
+        state["_network_prev_time"] = now
+        state["_network_prev_recv"] = counters.bytes_recv
+        state["_network_prev_sent"] = counters.bytes_sent
 
-    state["network_rx_rate"] = rx_rate
-    state["network_tx_rate"] = tx_rate
-    state["network_rx_bytes"] = counters.bytes_recv
-    state["network_tx_bytes"] = counters.bytes_sent
-    state["_network_prev_interface"] = interface
-    state["_network_prev_time"] = now
-    state["_network_prev_recv"] = counters.bytes_recv
-    state["_network_prev_sent"] = counters.bytes_sent
+        if getattr(cfg, "LOG_FAST_VALUES", False):
+            logger.debug(
+                "FAST network interface=%s rx=%s tx=%s",
+                interface,
+                _format_rate(rx_rate),
+                _format_rate(tx_rate),
+            )
 
-    if getattr(cfg, "LOG_FAST_VALUES", False):
-        logger.debug(
-            "FAST network interface=%s rx=%s tx=%s",
-            interface,
-            _format_rate(rx_rate),
-            _format_rate(tx_rate),
-        )
+    _collect_monitoring(state, cfg, logger, "fast")
 
 
 def collect_medium(state, cfg, logger):
@@ -155,11 +293,14 @@ def collect_medium(state, cfg, logger):
             "-" if wifi_quality is None else f"{wifi_quality:.0f}%",
         )
 
+    _collect_monitoring(state, cfg, logger, "medium")
+
 
 def collect_slow(state, cfg, logger):
     state["hostname"] = socket.gethostname()
     if getattr(cfg, "LOG_SLOW_VALUES", True):
         logger.info("SLOW hostname=%s", state["hostname"])
+    _collect_monitoring(state, cfg, logger, "slow")
 
 
 def card_ip(state):
@@ -277,10 +418,86 @@ def card_wifi_ring(state):
         "value": f"{float(quality):.0f}%",
         "detail": "",
         "ratio": ratio,
-        # Ring fill grows with quality, while the color scale is inverted so strong signal is green.
         "color_ratio": 1.0 - ratio,
         "status": _wifi_status(float(quality)),
     }
+
+
+def _latency_detail(result, fallback):
+    if not result:
+        return fallback
+    latency = result.get("latency_ms")
+    target = result.get("target") or fallback
+    return f"{target} · {latency:.0f}ms" if latency is not None else str(target)
+
+
+def card_wan(state):
+    result = state.get("wan_status")
+    if result is None:
+        return {"title": "WAN", "value": "WAIT", "detail": "", "status": "normal"}
+    error = result.get("error")
+    if error in ("PING", "CONFIG"):
+        return {"title": "WAN", "value": "N/A", "detail": error, "status": "warn"}
+    online = result.get("online") is True
+    return {
+        "title": "WAN",
+        "value": "ONLINE" if online else "OFFLINE",
+        "detail": _latency_detail(result, ""),
+        "status": "ok" if online else "error",
+    }
+
+
+def card_external_ipv4(state):
+    result = state.get("external_ipv4")
+    if result is None:
+        return {"title": "WAN IP", "value": "WAIT", "detail": "", "status": "normal"}
+    error = str(result.get("error") or "")
+    if error:
+        return {
+            "title": "WAN IP",
+            "value": error,
+            "detail": "EXTERNAL IPv4",
+            "status": "warn" if error in ("AUTH", "INVALID") else "error",
+        }
+    return {
+        "title": "WAN IP",
+        "value": result.get("ip") or "?",
+        "detail": "EXTERNAL IPv4",
+        "status": "ok",
+    }
+
+
+def _check_card(state, alias, item):
+    title = str(item.get("title") or alias.replace("_", " ").upper())
+    result = (state.get("network_checks") or {}).get(alias)
+    if result is None:
+        return {"title": title, "value": "WAIT", "detail": str(item.get("ip") or ""), "status": "normal"}
+    error = result.get("error")
+    if error in ("PING", "CONFIG"):
+        return {"title": title, "value": "N/A", "detail": error, "status": "warn"}
+    online = result.get("online") is True
+    return {
+        "title": title,
+        "value": "ONLINE" if online else "OFFLINE",
+        "detail": _latency_detail(result, str(item.get("ip") or "")),
+        "status": "ok" if online else "error",
+    }
+
+
+def build_cards(cfg):
+    cards = {}
+    block = getattr(cfg, "network", {}) or {}
+    if bool((block.get("wan", {}) or {}).get("enabled", False)):
+        cards["wan"] = card_wan
+    if bool((block.get("external_ipv4", {}) or {}).get("enabled", False)):
+        cards["wan_ip"] = card_external_ipv4
+        cards["external_ipv4"] = card_external_ipv4
+    for alias, item in (block.get("checks", {}) or {}).items():
+        if isinstance(item, dict):
+            cards[f"network.{alias}"] = (
+                lambda state, alias=alias, item=item: _check_card(state, alias, item)
+            )
+    return cards
 
 
 CARD_BUILDERS = {

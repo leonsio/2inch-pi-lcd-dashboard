@@ -9,6 +9,7 @@ Configure the dashboard in **YAML**, without editing Python source code:
 
 - CPU, temperature, frequency, memory, swap, disk, free space, processes, uptime and system load
 - IP address, hostname, network interface, link speed, live RX/TX traffic and Wi-Fi signal quality
+- Optional WAN reachability, external/public IPv4 and configurable IPv4 online/offline checks
 - Multiple storage devices with usage, free space, I/O rates and optional SMART health
 - Optional Home Assistant, AdGuard, OpenCCU/piVCCU, Pi-hole v6, Proxmox, Docker and generic REST modules
 - Individual Proxmox VM/LXC and Docker container status cards
@@ -22,8 +23,9 @@ Start with [config.example.yaml](config.example.yaml). The
 [configuration guide](docs/Configuration.md) contains the complete option
 reference and configuration examples. Extended System, Network, Proxmox and Docker
 examples are documented in [docs/ExtendedModules.md](docs/ExtendedModules.md),
-storage is documented in [docs/Storage.md](docs/Storage.md), and the generic REST
-integration is documented in [docs/REST.md](docs/REST.md).
+WAN and reachability monitoring in [docs/Network.md](docs/Network.md), storage in
+[docs/Storage.md](docs/Storage.md), and the generic REST integration in
+[docs/REST.md](docs/REST.md).
 
 ## Disclaimer
 
@@ -135,8 +137,9 @@ PAGES:
 Omitted global settings inherit from `config.example.yaml`; `PAGES` replaces the entire
 example page list. Modules load only when their block is present, such as `system: {}`,
 `network: {}`, `storage: {}` or a `pihole` block with its connection settings. Remove a
-block to disable its module. See [docs/Storage.md](docs/Storage.md) for multiple local
-disks and optional SMART monitoring, the [module and entity examples](docs/Configuration.md#14-multiple-home-assistant-entities)
+block to disable its module. See [docs/Network.md](docs/Network.md) for WAN, public IPv4
+and IP reachability checks, [docs/Storage.md](docs/Storage.md) for multiple local disks
+and optional SMART monitoring, the [module and entity examples](docs/Configuration.md#14-multiple-home-assistant-entities)
 for sensors, switches and other Home Assistant cards, or [docs/REST.md](docs/REST.md)
 for arbitrary JSON REST APIs. Use `true`/`false` for booleans, `null` for no value,
 and quote colors such as `'#FFFFFF'`. `SHOW_PER_CORE: false` displays average CPU usage

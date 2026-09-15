@@ -93,6 +93,20 @@ ADGUARD_PROTECTION_ENTITY = 'switch.adguard_home_protection'
 ADGUARD_BLOCKED_RATIO_ENTITY = 'sensor.adguard_home_dns_queries_blocked_ratio'
 
 # -----------------------------------------------------------------------------
+# Pi-hole v6 REST API
+# -----------------------------------------------------------------------------
+# Leave PIHOLE_URL empty when Pi-hole is not used. For HTTPS installations with
+# a self-signed certificate set PIHOLE_VERIFY_SSL = False.
+#
+# PIHOLE_PASSWORD should preferably be a Pi-hole application password. If the
+# Pi-hole API has no password configured, leave PIHOLE_PASSWORD empty.
+PIHOLE_URL = ''
+# PIHOLE_URL = 'http://pi.hole'
+# PIHOLE_URL = 'https://192.168.2.10'
+PIHOLE_PASSWORD = ''
+PIHOLE_VERIFY_SSL = True
+
+# -----------------------------------------------------------------------------
 # Grid / pages / navigation
 # -----------------------------------------------------------------------------
 # GRID_ROWS and GRID_COLS describe the logical matrix, not fixed pixel sizes.
@@ -139,7 +153,7 @@ SELECTED_INSET = 3
 #
 # Available classic modules:
 # cpu, ram, hdd, uptime, load, ip, hostname, network,
-# pivccu, home_assistant (or ha), adguard, proxmox, shutdown, reboot
+# pivccu, home_assistant (or ha), adguard, pihole, proxmox, shutdown, reboot
 #
 # Additional ring/donut modules:
 # cpu_ring, ram_ring, disk_ring, hdd_ring, temp_ring

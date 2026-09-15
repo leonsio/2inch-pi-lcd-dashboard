@@ -16,7 +16,9 @@ try:
 except ConfigError as error:
     raise SystemExit(f"Configuration error: {error}") from None
 from dashboard_buttons import DashboardButtons
-from dashboard_modules import CARD_BUILDERS, COLLECTORS, POWER_ACTIONS, execute_power_action
+from api.registry import load_modules
+
+modules = load_modules(cfg)
 from dashboard_navigation import DashboardNavigator
 from dashboard_renderer import DashboardRenderer
 from lcd.display_factory import create_display
@@ -71,7 +73,7 @@ def shutdown_handler(signum, frame):
 
 def run_collectors(group, logger):
     started = time.monotonic()
-    for collector in COLLECTORS[group]:
+    for collector in modules.collectors[group]:
         try:
             collector(state, cfg, logger)
         except Exception:
@@ -82,23 +84,7 @@ def run_collectors(group, logger):
 
 
 def pages():
-    configured = getattr(cfg, "PAGES", None)
-    if not configured:
-        return [{
-            "name": "default",
-            "navigation": "browse",
-            "layout": {
-                "row1cell1": "cpu",
-                "row1cell2": "ram",
-                "row1cell3": "hdd",
-                "row2cell1": "pivccu",
-                "row2cell2": "home_assistant",
-                "row2cell3": "adguard",
-                "row3cell1": "uptime",
-                "row3cell2": {"module": "network", "colspan": 2},
-            },
-        }]
-    return configured
+    return cfg.PAGES
 
 
 def _request_render():
@@ -127,9 +113,9 @@ def open_selected():
     entry = navigator.selected_entry()
     if entry:
         module_name = str(entry["slot"].get("module", "")).lower()
-        if module_name in POWER_ACTIONS:
+        if module_name in modules.power_actions:
             logger = logging.getLogger("dashboard")
-            return execute_power_action(module_name, cfg, logger)
+            return modules.execute_power_action(module_name, cfg, logger)
 
     if navigator.open_selected():
         _request_render()
@@ -231,7 +217,7 @@ def main():
     disp.clear()
     disp.bl_DutyCycle(int(getattr(cfg, "DISPLAY_BACKLIGHT", 100)))
 
-    renderer = DashboardRenderer(disp, cfg, CARD_BUILDERS, logger)
+    renderer = DashboardRenderer(disp, cfg, modules.cards, logger)
     navigator = DashboardNavigator(pages(), logger)
 
     buttons_enabled = bool(getattr(cfg, "BUTTONS_ENABLED", False))

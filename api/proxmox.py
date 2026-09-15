@@ -22,15 +22,15 @@ STATE_KEYS = (
 
 def _configured(cfg):
     return bool(
-        str(getattr(cfg, "PROXMOX_URL", "")).strip()
-        and str(getattr(cfg, "PROXMOX_API_TOKEN_ID", "")).strip()
-        and str(getattr(cfg, "PROXMOX_API_TOKEN_SECRET", "")).strip()
+        str(cfg.proxmox["url"]).strip()
+        and str(cfg.proxmox["api_token_id"]).strip()
+        and str(cfg.proxmox["api_token_secret"]).strip()
     )
 
 
 def _headers(cfg):
-    token_id = str(getattr(cfg, "PROXMOX_API_TOKEN_ID", "")).strip()
-    token_secret = str(getattr(cfg, "PROXMOX_API_TOKEN_SECRET", "")).strip()
+    token_id = str(cfg.proxmox["api_token_id"]).strip()
+    token_secret = str(cfg.proxmox["api_token_secret"]).strip()
     return {
         "Authorization": f"PVEAPIToken={token_id}={token_secret}",
         "Accept": "application/json",
@@ -38,9 +38,9 @@ def _headers(cfg):
 
 
 def _get(cfg, path, params=None):
-    base = str(getattr(cfg, "PROXMOX_URL", "")).strip().rstrip("/")
+    base = str(cfg.proxmox["url"]).strip().rstrip("/")
     timeout = float(getattr(cfg, "REQUEST_TIMEOUT", 5))
-    verify_ssl = bool(getattr(cfg, "PROXMOX_VERIFY_SSL", False))
+    verify_ssl = bool(cfg.proxmox["verify_ssl"])
 
     # Local Proxmox installations commonly use their own/self-signed
     # certificate. Suppress only urllib3's expected warning when verification
@@ -75,7 +75,7 @@ def collect_medium(state, cfg, logger):
         return
 
     state["proxmox_configured"] = True
-    include_lxc = bool(getattr(cfg, "PROXMOX_INCLUDE_LXC", False))
+    include_lxc = bool(cfg.proxmox["include_lxc"])
 
     try:
         response = _get(cfg, "/cluster/resources", params={"type": "vm"})

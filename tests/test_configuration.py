@@ -26,7 +26,7 @@ class ConfigurationTests(unittest.TestCase):
         self.assertTrue(Path(cfg.FONT_PATH).is_file())
 
     def test_overrides_replace_pages_and_preserve_types(self):
-        cfg = self.load_text('BUTTONS_ENABLED: false\npre_shutdown: null\nPAGES:\n  - name: only\n    layout: {row1cell1: cpu}\n')
+        cfg = self.load_text('system: {}\nBUTTONS_ENABLED: false\npre_shutdown: null\nPAGES:\n  - name: only\n    layout: {row1cell1: cpu}\n')
         self.assertIs(cfg.BUTTONS_ENABLED, False)
         self.assertIsNone(cfg.pre_shutdown)
         self.assertEqual(cfg.GRID_COLS, 3)
@@ -69,12 +69,12 @@ class ConfigurationTests(unittest.TestCase):
                      [{'name': 'main', 'layout': {'row1cell1': {'module': 'cpu', 'colspan': 2}, 'row1cell2': 'ram'}}]]
         for pages in variants:
             with self.subTest(pages=pages), self.assertRaises(ConfigError):
-                self.load_text(yaml.safe_dump({'PAGES': pages}))
+                self.load_text(yaml.safe_dump({'system': {}, 'PAGES': pages}))
 
     def test_docs_examples_and_navigation(self):
         document = (ROOT / 'docs/Configuration.md').read_text()
         examples = re.findall(r'```yaml\n(.*?)```', document, re.S)
-        self.assertEqual(len(examples), 13)
+        self.assertEqual(len(examples), 14)
         for example in examples:
             with self.subTest(example=example):
                 self.load_text(example)

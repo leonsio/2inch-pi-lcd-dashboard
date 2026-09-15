@@ -7,6 +7,7 @@ import re
 from types import SimpleNamespace
 
 import yaml
+from api.registry import MODULES, available_cards
 
 ROOT = Path(__file__).resolve().parent
 
@@ -54,9 +55,11 @@ def _require(condition, message):
 
 def _validate(data, defaults):
     for key, value in data.items():
+        if key in MODULES:
+            continue
         _require(key in defaults, f"Unknown configuration option: {key}")
         default = defaults[key]
-        if key in ("PAGES", "pre_shutdown", "OPENCCU_IP") or key.startswith("GPIO_BUTTON_"):
+        if key in ("PAGES", "pre_shutdown") or key.startswith("GPIO_BUTTON_"):
             continue
         if isinstance(default, bool):
             valid = type(value) is bool
@@ -82,7 +85,6 @@ def _validate(data, defaults):
     _require(normalize_device_name(data["LCD_DEVICE"]) in supported_devices(), "LCD_DEVICE must select 2inch or 1inch69")
     interfaces = data["NETWORK_INTERFACES"]
     _require(all(isinstance(item, str) and item for item in interfaces), "NETWORK_INTERFACES must contain interface names")
-    _require(data["OPENCCU_IP"] is None or isinstance(data["OPENCCU_IP"], str), "OPENCCU_IP must be a string or null")
     command = data["pre_shutdown"]
     _require(command is None or command is False or isinstance(command, str) or
              isinstance(command, list) and all(isinstance(part, str) and part for part in command),
@@ -96,6 +98,45 @@ def _validate(data, defaults):
     if data["BUTTONS_ENABLED"]:
         _require(len(pins) == len(set(pins)), "GPIO button pins must be unique")
     _validate_pages(data)
+
+
+def _validate_modules(data):
+    for name, (_, defaults, _) in MODULES.items():
+        if name not in data:
+            continue
+        block = data[name]
+        _require(isinstance(block, dict), f"{name} must be a mapping; remove the block to disable it")
+        _require(set(block) <= set(defaults), f"{name}: unknown option")
+        block = {**defaults, **block}
+        for key, value in block.items():
+            _require(isinstance(value, type(defaults[key])), f"{name}.{key}: invalid type")
+        for key in ("url", "token", "ip", "api_token_id", "api_token_secret"):
+            if key in block:
+                _require(bool(block[key].strip()), f"{name}.{key} is required")
+        if "url" in block:
+            from urllib.parse import urlsplit
+            try:
+                url = urlsplit(block["url"])
+                valid = url.scheme in ("http", "https") and bool(url.hostname) and not url.query and not url.fragment and not url.username
+            except ValueError:
+                valid = False
+            _require(valid, f"{name}.url must be an HTTP(S) base URL without credentials, query or fragment")
+        data[name] = block
+    _require("adguard" not in data or "home_assistant" in data, "adguard requires a home_assistant block")
+    for name, item in data.get("home_assistant", {}).get("entities", {}).items():
+        _require(bool(re.fullmatch(r"[a-z0-9_]+", name)), "Home Assistant card names must use lowercase letters, digits and underscores")
+        _require(isinstance(item, dict), f"home_assistant.entities.{name} must be a mapping")
+        _require(set(item) <= {"entity_id", "title", "attribute", "precision", "unit", "state_labels", "detail"}, f"home_assistant.entities.{name}: unknown option")
+        _require(isinstance(item.get("entity_id"), str) and bool(re.fullmatch(r"[a-z0-9_]+\.[a-z0-9_]+", item["entity_id"])), f"home_assistant.entities.{name}: entity_id required")
+        for key in ("title", "attribute", "unit", "detail"):
+            if key in item:
+                _require(isinstance(item[key], str), f"home_assistant.entities.{name}.{key} must be a string")
+        if "precision" in item:
+            _require(type(item["precision"]) is int and 0 <= item["precision"] <= 10, f"home_assistant.entities.{name}.precision must be 0..10")
+        labels = item.get("state_labels", {})
+        _require(isinstance(labels, dict) and all(isinstance(v, str) for v in labels.values()), f"home_assistant.entities.{name}.state_labels must map quoted strings to strings")
+    for key, value in data.get("adguard", {}).items():
+        _require(bool(re.fullmatch(r"[a-z0-9_]+\.[a-z0-9_]+", value)), f"adguard.{key} must be an entity ID")
 
 
 def _validate_pages(data):
@@ -120,6 +161,7 @@ def _validate_pages(data):
             _require(isinstance(slot, dict), f"{name}/{anchor}: invalid block")
             _require(set(slot) <= {"module", "colspan", "rowspan", "selectable", "target_page"}, f"{name}/{anchor}: unknown block option")
             _require(isinstance(slot.get("module"), str) and bool(slot["module"]), f"{name}/{anchor}: module required")
+            _require(slot["module"].lower() in available_cards(data), f"{name}/{anchor}: unknown card or missing module configuration block: {slot['module']}")
             _require(type(slot.get("selectable", True)) is bool, f"{name}/{anchor}: selectable must be true or false")
             if "target_page" in slot:
                 _require(isinstance(slot["target_page"], str), f"{name}/{anchor}: target_page must be a name")
@@ -136,12 +178,20 @@ def _validate_pages(data):
 
 
 def load_config(path=None):
-    """Merge top-level overrides with shipped defaults; lists replace defaults."""
+    """Merge global defaults; module blocks are enabled only when present."""
     path = Path(path) if path is not None else ROOT / "config.yaml"
     if not path.is_file():
         raise ConfigError(f"Configuration missing: {path}. Copy config.example.yaml to config.yaml.")
     defaults = _read(ROOT / "config.example.yaml")
-    data = {**defaults, **_read(path)}
+    overrides = _read(path)
+    data = {**{k: v for k, v in defaults.items() if k not in MODULES}, **overrides}
+    _validate_modules(data)
+    if "PAGES" not in overrides:
+        # Shipped pages adapt to enabled modules. Explicit layouts are validated.
+        cards = available_cards(data)
+        for page in data["PAGES"]:
+            page["layout"] = {key: slot for key, slot in page["layout"].items()
+                              if (slot if isinstance(slot, str) else slot["module"]).lower() in cards}
     _validate(data, defaults)
     font = Path(data["FONT_PATH"])
     if not font.is_absolute():

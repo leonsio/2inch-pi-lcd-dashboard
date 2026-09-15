@@ -34,9 +34,9 @@ configuration without starting the dashboard. On a new installation, use
 - Use `true` and `false` without quotes for booleans; use `null` for no value.
 - Quote passwords, tokens, numeric-looking strings, and all `#RRGGBB` colors.
 - Keys are case-sensitive. Unknown settings and duplicate keys are rejected.
-- The root must be a mapping. An explicit `{}` loads all shipped defaults;
+- The root must be a mapping. An explicit `{}` loads global defaults with no modules;
   an empty file is treated as a likely mistake and rejected.
-- Missing top-level settings inherit from `config.example.yaml`. Treat that file
+- Missing global settings inherit from `config.example.yaml`. Treat that file
   as the shipped default template and edit your private `config.yaml` instead.
 - Lists are replaced completely. In particular, specifying `PAGES` replaces
   **all** default pages; it does not merge their individual cells.
@@ -98,31 +98,56 @@ for conflicts with LCD pins (default reset 22, DC 25, backlight 23) and SPI pins
 Physical pin 39 can serve as common ground. Without buttons the first browse
 page stays visible; pages do not rotate automatically.
 
-### Service connections
+### Module blocks and API connections
 
-| Key | Default | Meaning |
+Only blocks present in `config.yaml` are loaded. Removing `pihole`, for example,
+removes its imports, collectors and cards. Global display/polling settings still
+inherit defaults; module blocks never do. Empty blocks (`system: {}`) enable modules
+without required connection settings. `null` and `false` are not module blocks.
+
+| Block | Options (inside the block) | Cards |
 | --- | --- | --- |
-| `HOME_ASSISTANT_URL` | `http://homeassistant.local:8123` | Home Assistant base URL |
-| `HOME_ASSISTANT_TOKEN` | Placeholder | Long-lived access token |
-| `ADGUARD_PROTECTION_ENTITY` | `switch.adguard_home_protection` | HA protection switch |
-| `ADGUARD_BLOCKED_RATIO_ENTITY` | `sensor.adguard_home_dns_queries_blocked_ratio` | HA blocked percentage sensor |
-| `OPENCCU_IP` | `null` | Explicit OpenCCU address; null uses fallback below |
-| `PIVCCU_FALLBACK_IP` | `192.168.2.155` | Legacy address alias |
-| `XML_RPC_TOKEN` | Placeholder | OpenCCU XML API token |
-| `PIHOLE_URL` | `''` | Pi-hole v6 base URL; empty disables Pi-hole polling |
-| `PIHOLE_PASSWORD` | `''` | API/application password |
-| `PIHOLE_VERIFY_SSL` | `true` | Validate Pi-hole HTTPS certificate |
-| `PROXMOX_URL` | `''` | Base URL, usually including port 8006 |
-| `PROXMOX_API_TOKEN_ID` | `''` | Full `user@realm!token-name` |
-| `PROXMOX_API_TOKEN_SECRET` | `''` | Token secret |
-| `PROXMOX_VERIFY_SSL` | `false` | Existing default accepts self-signed certificates; use true with trusted certificates |
-| `PROXMOX_INCLUDE_LXC` | `false` | Include LXC guests in VM counts |
+| `system` | `{}`; uses global system/ring settings | CPU, RAM, disk, temperature, load, uptime |
+| `network` | `{}`; uses global `NETWORK_INTERFACES` | `network`, `ip`, `hostname` |
+| `power` | `{}`; uses global `pre_shutdown` | `shutdown`, `reboot` |
+| `home_assistant` | Required `url`, `token`; `verify_ssl: true`; `entities: {}` | `home_assistant`, `ha`, `home_assistant.<name>` |
+| `pivccu` | Required `ip`, `token` | `pivccu`, `openccu` |
+| `pihole` | Required `url`; `password: ''`, `verify_ssl: true` | `pihole`, `pi_hole` |
+| `adguard` | `protection_entity: switch.adguard_home_protection`, `blocked_ratio_entity: sensor.adguard_home_dns_queries_blocked_ratio` | `adguard` |
+| `proxmox` | Required `url`, `api_token_id`, `api_token_secret`; `verify_ssl: false`, `include_lxc: false` | `proxmox` |
 
-AdGuard is read through Home Assistant entities, not directly through an
-AdGuard endpoint. Proxmox polling requires URL, token ID and secret. Removing
-a card from `PAGES` only changes rendering: it does not disable collectors.
-Home Assistant/OpenCCU collectors still run and may log unavailable-service
-warnings even on a page containing only local system cards.
+AdGuard requires a `home_assistant` block and uses its connection. It is loaded
+separately; Home Assistant alone does not poll AdGuard. Proxmox defaults to accepting
+self-signed certificates; set `verify_ssl: true` when using a trusted certificate.
+
+A page only selects what is displayed; enabled collectors run regardless of the
+current page. Explicit pages referring to absent modules or unknown entity card
+names fail validation. When `PAGES` is omitted, default layouts are filtered to
+cards provided by enabled modules. Add an explicit page to display API cards.
+
+#### Home Assistant entity options
+
+`home_assistant.entities` maps a unique lowercase name to a card configuration.
+Reference it as `home_assistant.<name>` in a layout. Any entity domain is supported,
+including `sensor`, `binary_sensor`, `switch`, `light`, `input_boolean` and `climate`.
+Switches show their current state; pressing OK does not toggle them.
+
+| Option | Meaning |
+| --- | --- |
+| `entity_id` | Required full ID, e.g. `sensor.living_room_temperature` |
+| `title` | Override title; otherwise use the entity's friendly name or ID |
+| `attribute` | Display a named attribute instead of the state |
+| `precision` | Decimal places 0–10 for numeric values |
+| `unit` | Override the unit; `''` hides it. State cards otherwise use the HA unit; attribute cards require an explicit unit |
+| `state_labels` | Map raw state strings to display strings; quote keys such as `'on'` and `'off'` |
+| `detail` | Optional fixed text below the value |
+
+Each distinct configured entity is read once per medium interval, even if multiple
+cards display its state/attributes. Failed reads clear old values. Cards distinguish
+`AUTH`, `OFFLINE`, `ENTITY` (missing ID), `API` (failed response), `UNAVAILABLE`,
+`UNKNOWN` and `ATTRIBUTE` (missing attribute). `WAIT` appears before the first poll.
+The status card also reads version metadata during the slow interval.
+The implementation uses the [Home Assistant REST API](https://developers.home-assistant.io/docs/api/rest/).
 
 ### Fonts and colors
 
@@ -189,11 +214,13 @@ You can use one as `config.yaml`; omitted options inherit shipped defaults.
 To combine examples, merge their keys rather than pasting duplicate keys.
 Combine layouts inside a single `PAGES` list. Replace sample service credentials
 with your own. Validation checks configuration structure, not remote credentials,
-module availability, installed fonts or actual wiring.
+remote availability, installed fonts or actual wiring. Card names and required module blocks are validated.
 
 ### 1. Compact local system page
 
 ```yaml
+system: {}
+network: {}
 LCD_DEVICE: '2inch'
 BUTTONS_ENABLED: false
 PAGES:
@@ -210,6 +237,8 @@ PAGES:
 ### 2. The 1.69-inch display
 
 ```yaml
+system: {}
+network: {}
 LCD_DEVICE: '1inch69'
 AUTO_FONT_SCALE: true
 DISPLAY_BACKLIGHT: 65
@@ -223,6 +252,13 @@ enabled. The same grid is automatically fitted to 280×240 pixels.
 ### 3. Rings mixed with classic cards
 
 ```yaml
+system: {}
+network: {}
+home_assistant:
+  url: http://homeassistant.local:8123
+  token: YOUR_TOKEN
+pihole:
+  url: http://pi.hole
 PAGES:
   - name: rings
     layout:
@@ -243,6 +279,16 @@ RING_COLOR_MIDPOINT: 0.65
 ### 4. Buttons, two overview pages and a detail page
 
 ```yaml
+system: {}
+network: {}
+home_assistant:
+  url: http://homeassistant.local:8123
+  token: YOUR_TOKEN
+pihole:
+  url: http://pi.hole
+pivccu:
+  ip: 192.168.1.30
+  token: YOUR_TOKEN
 BUTTONS_ENABLED: true
 GPIO_BUTTON_PREVIOUS: 19
 GPIO_BUTTON_NEXT: 26
@@ -283,6 +329,8 @@ does nothing on OK unless it is a power-action card.
 ### 5. A large 2×2 block
 
 ```yaml
+system: {}
+network: {}
 PAGES:
   - name: large
     layout:
@@ -298,6 +346,7 @@ its span. The selection frame covers the full block; it counts as one step.
 ### 6. A different grid
 
 ```yaml
+system: {}
 GRID_ROWS: 2
 GRID_COLS: 2
 PAGES:
@@ -315,10 +364,13 @@ its bounds. For an informational-only card use `selectable: false`, not `null`.
 ### 7. Home Assistant and AdGuard
 
 ```yaml
-HOME_ASSISTANT_URL: 'http://192.168.1.20:8123'
-HOME_ASSISTANT_TOKEN: 'YOUR_LONG_LIVED_ACCESS_TOKEN'
-ADGUARD_PROTECTION_ENTITY: 'switch.adguard_home_protection'
-ADGUARD_BLOCKED_RATIO_ENTITY: 'sensor.adguard_home_dns_queries_blocked_ratio'
+network: {}
+home_assistant:
+  url: 'http://192.168.1.20:8123'
+  token: 'YOUR_LONG_LIVED_ACCESS_TOKEN'
+adguard:
+  protection_entity: 'switch.adguard_home_protection'
+  blocked_ratio_entity: 'sensor.adguard_home_dns_queries_blocked_ratio'
 PAGES:
   - name: home
     layout:
@@ -330,8 +382,11 @@ PAGES:
 ### 8. OpenCCU / piVCCU XML API
 
 ```yaml
-OPENCCU_IP: '192.168.1.30'
-XML_RPC_TOKEN: 'YOUR_CCU_XML_API_TOKEN'
+system: {}
+network: {}
+pivccu:
+  ip: '192.168.1.30'
+  token: 'YOUR_CCU_XML_API_TOKEN'
 PAGES:
   - name: automation
     layout:
@@ -341,15 +396,16 @@ PAGES:
 
 Use an address without `http://` or a path. The collector reads
 `http://<address>/addons/xmlapi/systemNotification.cgi` using the token.
-No local discovery takes place. `OPENCCU_IP: null` uses `PIVCCU_FALLBACK_IP`;
-an empty string explicitly selects no address.
+No local discovery takes place. Remove the `pivccu` block to disable this integration.
 
 ### 9. Pi-hole v6
 
 ```yaml
-PIHOLE_URL: 'http://pi.hole'
-PIHOLE_PASSWORD: 'YOUR_PIHOLE_APPLICATION_PASSWORD'
-PIHOLE_VERIFY_SSL: true
+network: {}
+pihole:
+  url: 'http://pi.hole'
+  password: 'YOUR_PIHOLE_APPLICATION_PASSWORD'
+  verify_ssl: true
 PAGES:
   - name: dns
     layout:
@@ -357,18 +413,20 @@ PAGES:
       row1cell3: ip
 ```
 
-Leave the password empty only if the API needs no password. Leave the URL empty
+Leave the password empty only if the API needs no password. Remove the `pihole` block
 to disable Pi-hole polling. For an HTTPS endpoint with an intentionally accepted
-self-signed certificate, set `PIHOLE_VERIFY_SSL: false`.
+self-signed certificate, set `verify_ssl: false` inside `pihole`.
 
 ### 10. Proxmox including containers
 
 ```yaml
-PROXMOX_URL: 'https://pve.example.lan:8006'
-PROXMOX_API_TOKEN_ID: 'dashboard@pve!lcd-dashboard'
-PROXMOX_API_TOKEN_SECRET: 'YOUR_TOKEN_SECRET'
-PROXMOX_VERIFY_SSL: true
-PROXMOX_INCLUDE_LXC: true
+system: {}
+proxmox:
+  url: 'https://pve.example.lan:8006'
+  api_token_id: 'dashboard@pve!lcd-dashboard'
+  api_token_secret: 'YOUR_TOKEN_SECRET'
+  verify_ssl: true
+  include_lxc: true
 PAGES:
   - name: virtualization
     layout:
@@ -383,6 +441,8 @@ status meanings.
 ### 11. Dark theme
 
 ```yaml
+system: {}
+network: {}
 C_SCREEN_BG: '#101010'
 C_CELL_BG: '#181818'
 C_GRID: '#404040'
@@ -398,6 +458,8 @@ RING_COLOR_HIGH: '#FF5555'
 ### 12. Polling and debugging
 
 ```yaml
+system: {}
+network: {}
 FAST_INTERVAL: 2
 MEDIUM_INTERVAL: 30
 SLOW_INTERVAL: 300
@@ -418,6 +480,8 @@ intervals when necessary.
 ### 13. Shutdown/reboot with a preparation hook
 
 ```yaml
+system: {}
+power: {}
 BUTTONS_ENABLED: true
 pre_shutdown: ['/usr/local/bin/prepare-poweroff', '--flush']
 PAGES:
@@ -435,6 +499,59 @@ provided service). The hook runs first for both actions; failure aborts the
 power action. A YAML list executes directly as an argument vector. A string,
 such as `pre_shutdown: '/usr/local/bin/prepare-poweroff --flush'`, executes
 through the shell. `null`, `false`, `''` or `[]` disables the hook.
+
+### 14. Multiple Home Assistant entities
+
+```yaml
+home_assistant:
+  url: http://homeassistant.local:8123
+  token: YOUR_LONG_LIVED_ACCESS_TOKEN
+  entities:
+    temperature:
+      entity_id: sensor.living_room_temperature
+      title: Living room
+      precision: 1
+    lamp:
+      entity_id: switch.living_room_lamp
+      title: Lamp
+      state_labels: {'on': 'ON', 'off': 'OFF'}
+    window:
+      entity_id: binary_sensor.bedroom_window
+      title: Window
+      state_labels: {'on': 'OPEN', 'off': 'CLOSED'}
+    heating:
+      entity_id: climate.living_room
+      attribute: temperature
+      title: Target temp
+      precision: 1
+      unit: °C
+PAGES:
+  - name: home
+    layout:
+      row1cell1: home_assistant.temperature
+      row1cell2: home_assistant.lamp
+      row1cell3: home_assistant.window
+      row2cell1: home_assistant.heating
+      row2cell2: {module: home_assistant, colspan: 2}
+```
+
+This configuration loads only Home Assistant. To mix local system information
+into the page, add `system: {}` and place cards such as `cpu` or `uptime` in free cells.
+Entity names can be reused on multiple pages. All cards also support `colspan`,
+`rowspan`, `selectable` and `target_page`.
+
+### Adding an integration in Python
+
+API integrations live under `api/`; local metrics and power helpers live under
+`dashboard_modules/`. Both packages have side-effect-free initializers.
+`api/registry.py` declares supported blocks, option defaults and card names.
+To add an integration, create its module and add one catalog entry there.
+Export `CARD_BUILDERS` and whichever `collect_fast`, `collect_medium` or
+`collect_slow` functions it needs. Collectors receive `(state, cfg, logger)`;
+card builders receive `state` and return title/value/detail/status dictionaries.
+For configurable cards, export `build_cards(cfg)` and extend the declarative
+card-name validation accordingly. Integrations read their own block from `cfg`.
+The scheduler and renderer require no integration-specific imports or branches.
 
 ## Troubleshooting
 

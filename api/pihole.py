@@ -11,20 +11,20 @@ _SESSION = {
 
 
 def _base_url(cfg):
-    return str(getattr(cfg, "PIHOLE_URL", "") or "").strip().rstrip("/")
+    return str(cfg.pihole["url"] or "").strip().rstrip("/")
 
 
 def _verify_ssl(cfg):
-    return bool(getattr(cfg, "PIHOLE_VERIFY_SSL", True))
+    return bool(cfg.pihole["verify_ssl"])
 
 
 def _authenticate(cfg, force=False):
     """Return a reusable Pi-hole v6 API session ID."""
     base = _base_url(cfg)
-    password = str(getattr(cfg, "PIHOLE_PASSWORD", "") or "")
+    password = str(cfg.pihole["password"] or "")
 
     if not base:
-        raise ValueError("PIHOLE_URL is not configured")
+        raise ValueError("pihole.url is not configured")
 
     # Pi-hole without an API password does not require a SID.
     if not password:
@@ -58,7 +58,7 @@ def _authenticate(cfg, force=False):
 def _get(cfg, path):
     base = _base_url(cfg)
     if not base:
-        raise ValueError("PIHOLE_URL is not configured")
+        raise ValueError("pihole.url is not configured")
 
     sid = _authenticate(cfg)
     headers = {"X-FTL-SID": sid} if sid else {}
@@ -70,7 +70,7 @@ def _get(cfg, path):
     )
 
     # Cached Pi-hole sessions expire. Re-authenticate once on HTTP 401.
-    if response.status_code == 401 and getattr(cfg, "PIHOLE_PASSWORD", ""):
+    if response.status_code == 401 and cfg.pihole["password"]:
         sid = _authenticate(cfg, force=True)
         response = requests.get(
             f"{base}{path}",

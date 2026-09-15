@@ -9,14 +9,15 @@ Configure the dashboard in **YAML**, without editing Python source code:
 
 - CPU, temperature, memory, disk, uptime and system load
 - IP address, hostname and network interface
-- Home Assistant, AdGuard, OpenCCU/piVCCU, Pi-hole v6 and Proxmox status
+- Optional Home Assistant, AdGuard, OpenCCU/piVCCU, Pi-hole v6 and Proxmox modules
+- Multiple Home Assistant sensors, switches and other entity states on custom cards
 - Classic cards and ring displays in a configurable grid
 - Multiple overview pages and detail pages with optional GPIO buttons
 - Optional shutdown and reboot buttons with a preparation command
 
 Start with [config.example.yaml](config.example.yaml). The
 [configuration guide](docs/Configuration.md) contains the complete option
-reference and 13 configuration examples.
+reference and configuration examples for all integrations.
 
 ## Disclaimer
 
@@ -105,6 +106,8 @@ To stop the program, press Ctrl+C.
 Edit `config.yaml` in the repository directory. For example:
 
 ```yaml
+system: {}
+network: {}
 LCD_DEVICE: '2inch'
 SHOW_PER_CORE: false
 DISPLAY_BACKLIGHT: 80
@@ -120,8 +123,11 @@ PAGES:
       row3cell1: {module: uptime, colspan: 3}
 ```
 
-Omitted settings inherit from `config.example.yaml`; `PAGES` replaces the entire
-example page list. Use `true`/`false` for booleans, `null` for no value, and quote
+Omitted global settings inherit from `config.example.yaml`; `PAGES` replaces the entire
+example page list. Modules load only when their block is present, such as `system: {}`,
+`network: {}` or a `pihole` block with its connection settings. Remove a block to
+disable its module. See the [module and entity examples](docs/Configuration.md#14-multiple-home-assistant-entities)
+for sensors, switches and other Home Assistant cards. Use `true`/`false` for booleans, `null` for no value, and quote
 colors such as `'#FFFFFF'`. `SHOW_PER_CORE: false` displays average CPU usage
 (0–100%); `true` sums all cores (0–400% on a four-core Pi).
 

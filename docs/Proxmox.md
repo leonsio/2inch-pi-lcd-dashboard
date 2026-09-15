@@ -32,26 +32,20 @@ Keep the token secret only in the local `config.yaml`. `config.yaml` is excluded
 ## 2. Add the configuration to config.yaml
 
 ```yaml
-# -----------------------------------------------------------------------------
-# Proxmox VE REST API
-# -----------------------------------------------------------------------------
-# Base URL of the local Proxmox web/API service. Do not append /api2/json.
-PROXMOX_URL: 'https://192.168.2.50:8006'
-
-# Format: user@realm!token-name
-PROXMOX_API_TOKEN_ID: 'dashboard@pve!lcd-dashboard'
-PROXMOX_API_TOKEN_SECRET: 'YOUR_PROXMOX_API_TOKEN_SECRET'
-
-# Local Proxmox installations often use a self-signed certificate.
-# False accepts that certificate. True requires normal certificate validation.
-PROXMOX_VERIFY_SSL: false
-
-# False = count QEMU virtual machines only.
-# True  = count QEMU VMs and LXC containers together.
-PROXMOX_INCLUDE_LXC: false
+proxmox:
+  # Base URL without /api2/json
+  url: https://192.168.2.50:8006
+  api_token_id: dashboard@pve!lcd-dashboard
+  api_token_secret: YOUR_PROXMOX_API_TOKEN_SECRET
+  # Use false only to accept an untrusted/self-signed certificate.
+  verify_ssl: true
+  # Include LXC containers as well as QEMU VMs.
+  include_lxc: false
 ```
 
 The global `REQUEST_TIMEOUT` setting is reused for Proxmox API requests.
+Only a present `proxmox` block loads the module; remove it and its page cards
+to disable polling. URL, token ID and secret are required.
 
 ## 3. Add the module to a page
 
@@ -75,10 +69,9 @@ row2cell3:
 Informational only, so PREVIOUS/NEXT skips it:
 
 ```yaml
-'row2cell3': {
-    'module': 'proxmox',
-    'selectable': false,
-},
+row2cell3:
+  module: proxmox
+  selectable: false
 ```
 
 It can also use `colspan`, `rowspan`, and `target_page` like every other classic dashboard module.
@@ -90,7 +83,7 @@ It can also use `colspan`, `rowspan`, and `target_page` like every other classic
 | reachable and authenticated | `running/total VMs` | `ONLINE` | green |
 | reachable but API token rejected | `ONLINE` | `AUTH` | warning |
 | server/API unreachable | `OFFLINE` | empty | red |
-| configuration missing | `CONFIG` | `NOT SET` | warning |
+| incomplete configuration block | Startup validation error | Missing required setting | — |
 
 ## Refresh intervals
 

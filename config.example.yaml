@@ -38,20 +38,39 @@ GPIO_BUTTON_BACK: 21
 BUTTON_PULL_UP: true
 BUTTON_BOUNCE_TIME: 0.08
 
-# OpenCCU XML API; OPENCCU_IP below takes precedence when set
-PIVCCU_FALLBACK_IP: 192.168.2.155
-XML_RPC_TOKEN: YOUR_CCU_XML_API_TOKEN
+# Module blocks are opt-in and are NEVER inherited as defaults.
+# Remove a block to stop loading and polling that module.
+system: {}
+network: {}
+# power: {}  # Enables shutdown/reboot cards
 
-# Home Assistant and AdGuard
-HOME_ASSISTANT_URL: http://homeassistant.local:8123
-HOME_ASSISTANT_TOKEN: YOUR_HOME_ASSISTANT_LONG_LIVED_ACCESS_TOKEN
-ADGUARD_PROTECTION_ENTITY: switch.adguard_home_protection
-ADGUARD_BLOCKED_RATIO_ENTITY: sensor.adguard_home_dns_queries_blocked_ratio
-
-# Pi-hole v6 (empty URL disables polling)
-PIHOLE_URL: ''
-PIHOLE_PASSWORD: ''
-PIHOLE_VERIFY_SSL: true
+# Optional integrations (uncomment the block and enter your credentials):
+# pihole:
+#   url: http://pi.hole
+#   password: ''
+#   verify_ssl: true
+# pivccu:
+#   ip: 192.168.1.30
+#   token: YOUR_CCU_XML_API_TOKEN
+# home_assistant:
+#   url: http://homeassistant.local:8123
+#   token: YOUR_LONG_LIVED_ACCESS_TOKEN
+#   verify_ssl: true
+#   entities:
+#     temperature:
+#       entity_id: sensor.living_room_temperature
+#       title: Living room
+#       precision: 1
+#     lamp:
+#       entity_id: switch.living_room_lamp
+#       state_labels: {'on': 'ON', 'off': 'OFF'}
+# adguard: {}  # Requires home_assistant; see docs for entity names
+# proxmox:
+#   url: https://pve.example.lan:8006
+#   api_token_id: dashboard@pve!lcd-dashboard
+#   api_token_secret: YOUR_TOKEN_SECRET
+#   verify_ssl: true
+#   include_lxc: false
 
 # Grid and selection
 GRID_ROWS: 3
@@ -76,14 +95,14 @@ PAGES:
       module: hdd
       target_page: storage_detail
     row2cell1:
-      module: pivccu
-      target_page: services_detail
+      module: temp_ring
+      target_page: metrics_detail
     row2cell2:
-      module: home_assistant
-      target_page: services_detail
+      module: cpu_ring
+      target_page: metrics_detail
     row2cell3:
-      module: adguard
-      target_page: services_detail
+      module: ram_ring
+      target_page: metrics_detail
     row3cell1:
       module: uptime
       selectable: false
@@ -104,14 +123,14 @@ PAGES:
       module: hostname
       selectable: false
     row2cell1:
-      module: home_assistant
-      target_page: services_detail
+      module: cpu_ring
+      target_page: metrics_detail
     row2cell2:
-      module: adguard
-      target_page: services_detail
+      module: ram_ring
+      target_page: metrics_detail
     row2cell3:
-      module: pivccu
-      target_page: services_detail
+      module: temp_ring
+      target_page: metrics_detail
 - name: system_detail
   navigation: detail
   layout:
@@ -142,12 +161,12 @@ PAGES:
       module: ip
       colspan: 2
     row2cell3: hostname
-- name: services_detail
+- name: metrics_detail
   navigation: detail
   layout:
-    row1cell1: home_assistant
-    row1cell2: adguard
-    row1cell3: pivccu
+    row1cell1: cpu_ring
+    row1cell2: ram_ring
+    row1cell3: temp_ring
     row2cell1:
       module: network
       colspan: 2
@@ -182,16 +201,6 @@ RING_COLOR_HIGH: '#FF0000'
 RING_COLOR_MIDPOINT: 0.6
 TEMP_RING_MIN_C: 0
 TEMP_RING_MAX_C: 85
-
-# Explicit OpenCCU address; null uses PIVCCU_FALLBACK_IP
-OPENCCU_IP: null
-
-# Proxmox VE (requires URL, token ID and secret)
-PROXMOX_URL: ''
-PROXMOX_API_TOKEN_ID: ''
-PROXMOX_API_TOKEN_SECRET: ''
-PROXMOX_VERIFY_SSL: false
-PROXMOX_INCLUDE_LXC: false
 
 # Automatic font sizing
 AUTO_FONT_SCALE: true

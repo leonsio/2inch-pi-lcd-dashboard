@@ -9,7 +9,7 @@ from unittest.mock import patch
 import yaml
 
 from dashboard_config import ConfigError, ROOT, load_config
-from dashboard_navigation import DashboardNavigator
+from lib.dashboard_navigation import DashboardNavigator
 
 
 class ConfigurationTests(unittest.TestCase):

@@ -40,8 +40,9 @@ assert not registry.cards
 assert not any(registry.collectors.values())
 assert not registry.power_actions
 assert not any(name in sys.modules for name in
-    ('requests', 'lxml', 'psutil', 'netifaces', 'api.pihole',
-     'api.home_assistant', 'api.pivccu', 'api.proxmox', 'api.adguard'))
+    ('requests', 'lxml', 'psutil', 'netifaces', 'dashboard_modules.pihole',
+     'dashboard_modules.home_assistant', 'dashboard_modules.pivccu',
+     'dashboard_modules.proxmox', 'dashboard_modules.adguard'))
 """
         subprocess.run([sys.executable, "-c", script], cwd=ROOT, check=True)
 
@@ -58,7 +59,7 @@ assert not any(name in sys.modules for name in
         from importlib import import_module
         with patch("api.registry.import_module", wraps=import_module) as importer:
             registry = load_modules(cfg)
-        self.assertEqual([call.args[0] for call in importer.call_args_list], ["api.pihole"])
+        self.assertEqual([call.args[0] for call in importer.call_args_list], ["dashboard_modules.pihole"])
         self.assertEqual(set(registry.cards), {"pihole", "pi_hole"})
         self.assertEqual(len(registry.collectors["medium"]), 1)
         self.assertFalse(registry.collectors["slow"])
@@ -76,8 +77,10 @@ assert not any(name in sys.modules for name in
         self.assertEqual(set(registry.cards), available_cards(vars(cfg)))
         self.assertEqual(set(registry.power_actions), {"shutdown", "reboot"})
         self.assertEqual([f.__module__ for f in registry.collectors["medium"]],
-                         ["dashboard_modules.system", "dashboard_modules.network", "api.pihole",
-                          "api.pivccu", "api.home_assistant", "api.adguard", "api.proxmox"])
+                         ["dashboard_modules.system", "dashboard_modules.network",
+                          "dashboard_modules.pihole", "dashboard_modules.pivccu",
+                          "dashboard_modules.home_assistant", "dashboard_modules.adguard",
+                          "dashboard_modules.proxmox"])
 
     def test_invalid_blocks_and_missing_card_dependencies(self):
         for data in ({"pihole": None}, {"pihole": False}, {"pihole": {}},
@@ -92,7 +95,7 @@ assert not any(name in sys.modules for name in
 
 class HomeAssistantTests(unittest.TestCase):
     def setUp(self):
-        from api import home_assistant
+        from dashboard_modules import home_assistant
         self.api = home_assistant
         self.logger = Mock()
         self.cfg = config({"home_assistant": {
@@ -107,7 +110,7 @@ class HomeAssistantTests(unittest.TestCase):
 
     def test_multiple_entities_and_shared_reads(self):
         state = {}
-        with patch("api.home_assistant.requests.get", side_effect=[
+        with patch("dashboard_modules.home_assistant.requests.get", side_effect=[
             response({}), response({"state": "21.26", "attributes": {
                 "friendly_name": "Room", "unit_of_measurement": "°C", "battery": 0}}),
             response({"state": "off", "attributes": {}}),
@@ -128,14 +131,14 @@ class HomeAssistantTests(unittest.TestCase):
         for failure, expected in ((response(status=401), "AUTH"),
                                   (requests.ConnectionError(), "OFFLINE")):
             state = {"ha_entities": {"switch.lamp": ({"state": "on"}, "")}}
-            with patch("api.home_assistant.requests.get", side_effect=[failure]) as get:
+            with patch("dashboard_modules.home_assistant.requests.get", side_effect=[failure]) as get:
                 self.api.collect_medium(state, self.cfg, self.logger)
             self.assertEqual(get.call_count, 1)
             self.assertEqual(self.registry.cards["home_assistant.lamp"](state)["value"], expected)
 
     def test_one_entity_failure_does_not_hide_other_entities(self):
         for failure in (response(status=404), response(status=403), response([]), requests.Timeout()):
-            with self.subTest(failure=failure), patch("api.home_assistant.requests.get", side_effect=[
+            with self.subTest(failure=failure), patch("dashboard_modules.home_assistant.requests.get", side_effect=[
                 response({}), failure, response({"state": "on", "attributes": {}}),
             ]):
                 state = {}
@@ -153,12 +156,12 @@ class HomeAssistantTests(unittest.TestCase):
 
     def test_metadata(self):
         state = {}
-        with patch("api.home_assistant.requests.get", return_value=response({"version": "2026.9.1"})):
+        with patch("dashboard_modules.home_assistant.requests.get", return_value=response({"version": "2026.9.1"})):
             self.api.collect_slow(state, self.cfg, self.logger)
         self.assertEqual(state["ha_version"], "2026.9.1")
 
     def test_entity_cards_render_together_on_supported_displays(self):
-        from dashboard_renderer import DashboardRenderer
+        from lib.dashboard_renderer import DashboardRenderer
         page = {"name": "home", "layout": {
             "row1cell1": "home_assistant.temperature",
             "row1cell2": "home_assistant.lamp",
@@ -189,28 +192,28 @@ class HomeAssistantTests(unittest.TestCase):
 
 class ExistingIntegrationTests(unittest.TestCase):
     def test_pivccu_xml_and_error_reset(self):
-        from api import pivccu
+        from dashboard_modules import pivccu
         cfg = config({"pivccu": {"ip": "192.168.1.30", "token": "secret"}})
         state = {}
-        with patch("api.pivccu.requests.get", return_value=response(content=b"<root><notification/><notification/></root>")):
+        with patch("dashboard_modules.pivccu.requests.get", return_value=response(content=b"<root><notification/><notification/></root>")):
             pivccu.collect_medium(state, cfg, Mock())
         self.assertEqual(pivccu.card_openccu(state)["value"], "ERR 2")
         logger = Mock()
-        with patch("api.pivccu.requests.get", side_effect=requests.Timeout("url?sid=secret")):
+        with patch("dashboard_modules.pivccu.requests.get", side_effect=requests.Timeout("url?sid=secret")):
             pivccu.collect_medium(state, cfg, logger)
         self.assertIsNone(state["openccu_messages"])
         self.assertEqual(pivccu.card_openccu(state)["value"], "OFFLINE")
         self.assertNotIn("secret", str(logger.mock_calls))
 
     def test_pihole_session_renewal_and_summary(self):
-        from api import pihole
+        from dashboard_modules import pihole
         cfg = config({"pihole": {"url": "http://pi.hole", "password": "secret"}})
         state = {}
         with patch.dict(pihole._SESSION, {"base": "", "password": "", "sid": ""}), \
-             patch("api.pihole.requests.post", side_effect=[
+             patch("dashboard_modules.pihole.requests.post", side_effect=[
                  response({"session": {"valid": True, "sid": "old"}}),
                  response({"session": {"valid": True, "sid": "new"}}),
-             ]) as post, patch("api.pihole.requests.get", side_effect=[
+             ]) as post, patch("dashboard_modules.pihole.requests.get", side_effect=[
                  response(status=401), response({"blocking": True}),
                  response({"queries": {"total": 100, "blocked": 20, "percent_blocked": 20},
                            "gravity": {"domains_being_blocked": 1000}}),
@@ -221,11 +224,11 @@ class ExistingIntegrationTests(unittest.TestCase):
         self.assertEqual(pihole.card_pihole(state)["value"], "20.0%")
 
     def test_proxmox_guest_filtering_and_headers(self):
-        from api import proxmox
+        from dashboard_modules import proxmox
         cfg = config({"proxmox": {"url": "https://pve:8006", "api_token_id": "lcd@pve!lcd",
                                   "api_token_secret": "secret", "include_lxc": True}})
         state = {}
-        with patch("api.proxmox.requests.get", return_value=response({"data": [
+        with patch("dashboard_modules.proxmox.requests.get", return_value=response({"data": [
             {"type": "qemu", "status": "running"}, {"type": "lxc", "status": "stopped"},
             {"type": "qemu", "status": "stopped", "template": 1},
         ]})) as get:
@@ -234,10 +237,10 @@ class ExistingIntegrationTests(unittest.TestCase):
         self.assertEqual(get.call_args.kwargs["headers"]["Authorization"], "PVEAPIToken=lcd@pve!lcd=secret")
 
     def test_adguard_uses_home_assistant_connection(self):
-        from api import adguard
+        from dashboard_modules import adguard
         cfg = config({"home_assistant": {"url": "http://ha", "token": "secret"}, "adguard": {}})
         state = {"ha_online": True}
-        with patch("api.home_assistant.requests.get", side_effect=[
+        with patch("dashboard_modules.home_assistant.requests.get", side_effect=[
             response({"state": "on"}), response({"state": "12.5"}),
         ]):
             adguard.collect_medium(state, cfg, Mock())

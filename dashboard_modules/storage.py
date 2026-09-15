@@ -217,16 +217,35 @@ def card_storage(state):
     devices = state.get("storage_devices") or {}
     if not devices:
         return {"title": "STORAGE", "value": "WAIT", "detail": "", "status": "normal"}
+
     mounted = sum(1 for item in devices.values() if item.get("mounted"))
     total = len(devices)
     smart = state.get("storage_smart") or {}
-    failed = sum(1 for item in smart.values() if item.get("passed") is False)
-    detail = "SMART OK" if smart and not failed else (f"SMART FAIL {failed}" if failed else "")
+    checked = [item for item in smart.values() if item.get("status") != "DISABLED"]
+    failed = sum(1 for item in checked if item.get("passed") is False)
+    smart_warning = any(item.get("status") not in ("PASSED", "FAILED") for item in checked)
+
+    if failed:
+        detail = f"SMART FAIL {failed}"
+    elif checked and smart_warning:
+        detail = "SMART WARN"
+    elif checked:
+        detail = "SMART OK"
+    else:
+        detail = ""
+
+    if failed:
+        status = "error"
+    elif mounted != total or smart_warning:
+        status = "warn"
+    else:
+        status = "ok"
+
     return {
         "title": "STORAGE",
         "value": f"{mounted}/{total} MOUNT",
         "detail": detail,
-        "status": "ok" if mounted == total and not failed else ("error" if failed else "warn"),
+        "status": status,
     }
 
 
@@ -303,7 +322,9 @@ def _smart_card(alias, item, state):
     detail = "" if temperature is None else f"TEMP {temperature:.0f}°C"
     if status_text == "PASSED":
         status = "ok"
-    elif status_text in ("DISABLED", "UNAVAILABLE", "UNKNOWN"):
+    elif status_text == "DISABLED":
+        status = "normal"
+    elif status_text in ("UNAVAILABLE", "UNKNOWN"):
         status = "warn"
     else:
         status = "error"

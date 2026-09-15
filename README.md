@@ -144,6 +144,13 @@ For display selection, GPIO wiring, page navigation, spanning cards, themes,
 fonts, polling, service APIs and power actions, see the
 [extended configuration documentation](docs/Configuration.md).
 
+## Project structure
+
+- `dashboard_modules/` contains all dynamically loaded dashboard modules and service integrations.
+- `api/` contains shared API and module-loading infrastructure rather than service-specific implementations.
+- `lib/` contains reusable dashboard runtime helpers such as buttons, navigation and rendering.
+- `dashboard.py` remains the application entry point and `dashboard_config.py` remains the central YAML configuration loader.
+
 ## Contribution
 
 Are you passionate about open-source development? We invite you to contribute to our GitHub repository! Whether you're a seasoned developer or just starting out, your ideas, code, and feedback are invaluable. Join our community, collaborate with like-minded individuals, and help us build something amazing together. Every contribution, no matter how small, makes a difference. Fork the repo, dive into the issues, and let's make this project even better!

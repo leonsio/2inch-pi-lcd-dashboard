@@ -1,6 +1,7 @@
 """Declarative catalog and lazy registration, without client imports.
 
-New integrations declare their import path, option defaults and card names here.
+Integrations declare their import path, option defaults and card names here.
+The integration implementations themselves live in dashboard_modules/.
 """
 
 from importlib import import_module
@@ -12,16 +13,16 @@ MODULES = {
                "cpu ram hdd uptime load cpu_ring ram_ring disk_ring hdd_ring temp_ring"),
     "network": ("dashboard_modules.network", {}, "ip hostname network"),
     "power": ("dashboard_modules.power", {}, "shutdown reboot"),
-    "pihole": ("api.pihole", {"url": "", "password": "", "verify_ssl": True}, "pihole pi_hole"),
-    "pivccu": ("api.pivccu", {"ip": "", "token": ""}, "pivccu openccu"),
-    "home_assistant": ("api.home_assistant", {
+    "pihole": ("dashboard_modules.pihole", {"url": "", "password": "", "verify_ssl": True}, "pihole pi_hole"),
+    "pivccu": ("dashboard_modules.pivccu", {"ip": "", "token": ""}, "pivccu openccu"),
+    "home_assistant": ("dashboard_modules.home_assistant", {
         "url": "", "token": "", "verify_ssl": True, "entities": {},
     }, "home_assistant ha"),
-    "adguard": ("api.adguard", {
+    "adguard": ("dashboard_modules.adguard", {
         "protection_entity": "switch.adguard_home_protection",
         "blocked_ratio_entity": "sensor.adguard_home_dns_queries_blocked_ratio",
     }, "adguard"),
-    "proxmox": ("api.proxmox", {
+    "proxmox": ("dashboard_modules.proxmox", {
         "url": "", "api_token_id": "", "api_token_secret": "",
         "verify_ssl": False, "include_lxc": False,
     }, "proxmox"),

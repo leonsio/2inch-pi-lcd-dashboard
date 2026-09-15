@@ -42,6 +42,7 @@ BUTTON_BOUNCE_TIME: 0.08
 # Remove a block to stop loading and polling that module.
 system: {}
 network: {}
+# storage: {}  # Root filesystem; see docs/Storage.md for multiple disks and SMART
 # power: {}  # Enables shutdown/reboot cards
 
 # Optional integrations (uncomment the block and enter your credentials):
@@ -96,6 +97,23 @@ network: {}
 #       verify_ssl: true
 #       headers:
 #         Authorization: 'Bearer YOUR_TOKEN'
+
+# Storage example with multiple filesystems and optional SMART.
+# `device` is the physical device used by smartctl; `io_device` is the
+# psutil/Linux diskstats name. Omit them when automatic mount-source detection is enough.
+# storage:
+#   smartctl: smartctl
+#   devices:
+#     root:
+#       mount: /
+#       title: ROOT
+#       smart: false
+#     ssd:
+#       mount: /mnt/ssd
+#       title: SSD
+#       device: /dev/sda
+#       io_device: sda
+#       smart: true
 
 # Grid and selection
 GRID_ROWS: 3

@@ -14,7 +14,6 @@ import requests
 from urllib3.exceptions import InsecureRequestWarning
 
 
-_INTERVAL_GROUPS = {1: "fast", 60: "medium", 600: "slow"}
 _MISSING = object()
 
 
@@ -45,7 +44,7 @@ def _get_json(item, timeout):
         return None, f"HTTP {response.status_code}"
     try:
         return response.json(), ""
-    except (ValueError, json.JSONDecodeError):
+    except ValueError:
         return None, "JSON"
 
 
@@ -119,9 +118,11 @@ def _poll_interval(state, cfg, logger, interval):
         results[alias] = {"error": "", "value": value, "detail": detail}
 
     state["rest_results"] = results
-    if getattr(cfg, "LOG_MEDIUM_VALUES", True):
+    log_setting = {1: "LOG_FAST_VALUES", 60: "LOG_MEDIUM_VALUES", 600: "LOG_SLOW_VALUES"}[interval]
+    if getattr(cfg, log_setting, interval != 1):
         ok = sum(1 for alias in selected if not results.get(alias, {}).get("error"))
-        logger.info("REST interval=%ss cards=%d/%d ok", interval, ok, len(selected))
+        log = logger.debug if interval == 1 else logger.info
+        log("REST interval=%ss cards=%d/%d ok", interval, ok, len(selected))
 
 
 def collect_fast(state, cfg, logger):

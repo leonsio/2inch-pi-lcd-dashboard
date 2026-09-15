@@ -20,12 +20,9 @@ Configure the dashboard in **YAML**, without editing Python source code:
 - Optional shutdown and reboot buttons with a preparation command
 
 Start with [config.example.yaml](config.example.yaml). The
-[configuration guide](docs/Configuration.md) contains the complete option
-reference and configuration examples. Extended System, Network, Proxmox and Docker
-examples are documented in [docs/ExtendedModules.md](docs/ExtendedModules.md),
-WAN and reachability monitoring in [docs/Network.md](docs/Network.md), storage in
-[docs/Storage.md](docs/Storage.md), and the generic REST integration in
-[docs/REST.md](docs/REST.md).
+[configuration guide](docs/Configuration.md) documents global display, scheduler,
+GPIO, page/layout and theme settings. The canonical parameter reference for every
+module is available in the [module documentation index](docs/Modules.md).
 
 ## Disclaimer
 
@@ -137,13 +134,14 @@ PAGES:
 Omitted global settings inherit from `config.example.yaml`; `PAGES` replaces the entire
 example page list. Modules load only when their block is present, such as `system: {}`,
 `network: {}`, `storage: {}` or a `pihole` block with its connection settings. Remove a
-block to disable its module. See [docs/Network.md](docs/Network.md) for WAN, public IPv4
-and IP reachability checks, [docs/Storage.md](docs/Storage.md) for multiple local disks
-and optional SMART monitoring, the [module and entity examples](docs/Configuration.md#14-multiple-home-assistant-entities)
-for sensors, switches and other Home Assistant cards, or [docs/REST.md](docs/REST.md)
-for arbitrary JSON REST APIs. Use `true`/`false` for booleans, `null` for no value,
-and quote colors such as `'#FFFFFF'`. `SHOW_PER_CORE: false` displays average CPU usage
-(0–100%); `true` sums all cores (0–400% on a four-core Pi).
+block to disable its module.
+
+For module-specific configuration, use the [module documentation index](docs/Modules.md):
+System, Network, Storage, Power, Pi-hole, piVCCU/OpenCCU, Home Assistant, AdGuard,
+Proxmox, Docker and REST each have their own parameter reference and complete YAML
+examples. Use `true`/`false` for booleans, `null` for no value, and quote colors such
+as `'#FFFFFF'`. `SHOW_PER_CORE: false` displays average CPU usage (0–100%); `true`
+sums all cores (0–400% on a four-core Pi).
 
 The installer installs PyYAML and checks the configuration before starting the
 service. You can also validate without accessing the hardware:
@@ -155,7 +153,7 @@ sudo systemctl restart dashboard.service
 ```
 
 For display selection, GPIO wiring, page navigation, spanning cards, themes,
-fonts, polling, service APIs and power actions, see the
+fonts, polling and other global options, see the
 [extended configuration documentation](docs/Configuration.md).
 
 ## Project structure

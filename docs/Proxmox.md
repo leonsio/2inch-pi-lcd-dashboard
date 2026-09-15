@@ -1,90 +1,138 @@
-# Proxmox dashboard module
+# Proxmox module
 
-The dashboard module `proxmox` reads a local Proxmox VE server through its REST API and renders a normal rectangular dashboard card.
+The `proxmox` module reads Proxmox VE cluster resources through the REST API. It shows an overall VM/LXC status and can expose selected guests as individual cards.
 
-Example display:
-
-```text
-PROXMOX
-3/5 VMs
-ONLINE
-```
-
-- `3` = running VMs
-- `5` = total VMs
-- stopped VMs are included in the total
-- templates are ignored
-- by default only QEMU virtual machines are counted
-- LXC containers can optionally be included
-
-## 1. Create a read-only API token
-
-Use a dedicated Proxmox user/API token for the dashboard rather than a root credential. A read-only `PVEAuditor` permission on `/` is sufficient for a simple monitoring token.
-
-The token ID passed to the dashboard must include user, realm and token name, for example:
-
-```text
-dashboard@pve!lcd-dashboard
-```
-
-Keep the token secret only in the local `config.yaml`. `config.yaml` is excluded from Git by this project.
-
-## 2. Add the configuration to config.yaml
+## Enable the module
 
 ```yaml
 proxmox:
-  # Base URL without /api2/json
-  url: https://192.168.2.50:8006
+  url: https://pve.example.lan:8006
   api_token_id: dashboard@pve!lcd-dashboard
-  api_token_secret: YOUR_PROXMOX_API_TOKEN_SECRET
-  # Use false only to accept an untrusted/self-signed certificate.
-  verify_ssl: true
-  # Include LXC containers as well as QEMU VMs.
+  api_token_secret: YOUR_TOKEN_SECRET
+  verify_ssl: false
   include_lxc: false
+  vms: {}
 ```
 
-The global `REQUEST_TIMEOUT` setting is reused for Proxmox API requests.
-Only a present `proxmox` block loads the module; remove it and its page cards
-to disable polling. URL, token ID and secret are required.
+## Parameters
 
-## 3. Add the module to a page
-
-Insert these snippets inside a page’s `layout` mapping. See the
-[configuration guide](Configuration.md) for complete page examples.
-
-Simple 1x1 rectangular block:
-
-```yaml
-row2cell3: proxmox
-```
-
-With button navigation:
-
-```yaml
-row2cell3:
-  module: proxmox
-  selectable: true
-```
-
-Informational only, so PREVIOUS/NEXT skips it:
-
-```yaml
-row2cell3:
-  module: proxmox
-  selectable: false
-```
-
-It can also use `colspan`, `rowspan`, and `target_page` like every other classic dashboard module.
-
-## Status behaviour
-
-| API state | Card value | Detail | Color |
+| Parameter | Type | Default/example | Purpose |
 | --- | --- | --- | --- |
-| reachable and authenticated | `running/total VMs` | `ONLINE` | green |
-| reachable but API token rejected | `ONLINE` | `AUTH` | warning |
-| server/API unreachable | `OFFLINE` | empty | red |
-| incomplete configuration block | Startup validation error | Missing required setting | — |
+| `url` | string | `https://pve.example.lan:8006` | Required Proxmox VE base URL. |
+| `api_token_id` | string | `dashboard@pve!lcd-dashboard` | Required Proxmox API token ID. |
+| `api_token_secret` | string | `YOUR_TOKEN_SECRET` | Required token secret. |
+| `verify_ssl` | boolean | `false` | Verify the Proxmox HTTPS certificate. Enable when the certificate is trusted by the host. |
+| `include_lxc` | boolean | `false` | Include LXC containers in the guest list/count. |
+| `vms` | mapping | `{}` | Optional individual VM/LXC cards keyed by alias. |
 
-## Refresh intervals
+The global `REQUEST_TIMEOUT` controls HTTP request timeout.
 
-The running/total VM count is collected in the dashboard's `MEDIUM_INTERVAL` loop. The Proxmox version is collected in the `SLOW_INTERVAL` loop and retained in state for future detail pages or extended cards.
+## API token
+
+The module sends the standard Proxmox token header:
+
+```text
+Authorization: PVEAPIToken=<api_token_id>=<api_token_secret>
+```
+
+Use a dedicated read-only/least-privilege token that can read cluster resources and version information.
+
+## Individual guest parameters
+
+Each entry under `vms` creates `proxmox.<alias>`.
+
+### Short form
+
+```yaml
+proxmox:
+  url: https://pve.example.lan:8006
+  api_token_id: dashboard@pve!lcd-dashboard
+  api_token_secret: YOUR_TOKEN_SECRET
+  vms:
+    dockerhost: 101
+```
+
+The integer is the VMID. The title is generated from the alias.
+
+### Long form
+
+```yaml
+proxmox:
+  url: https://pve.example.lan:8006
+  api_token_id: dashboard@pve!lcd-dashboard
+  api_token_secret: YOUR_TOKEN_SECRET
+  vms:
+    homeassistant:
+      vmid: 100
+      title: Home Assistant
+```
+
+| Parameter | Required | Type | Example | Purpose |
+| --- | --- | --- | --- | --- |
+| `vmid` | yes | positive integer | `100` | Proxmox VM/LXC ID. |
+| `title` | no | non-empty string | `Home Assistant` | Custom card title. |
+
+Aliases use lowercase letters, digits and underscores.
+
+## LXC behavior
+
+When `include_lxc: false`, only QEMU VMs are returned by the module's filtering. A configured LXC card will therefore show `NOT FOUND`. Set `include_lxc: true` when LXC containers should be counted and available as individual cards.
+
+## Available cards
+
+| Card | Display |
+| --- | --- |
+| `proxmox` | Running guests versus total guests |
+| `proxmox.<alias>` | State of a configured VM/LXC plus VMID and node |
+
+Individual cards can display `RUNNING`, `STOPPED`, `NOT FOUND`, `AUTH`, `OFFLINE` or `CONFIG` depending on state.
+
+## Polling
+
+- **medium**: `/cluster/resources?type=vm`, guest count and individual guest state
+- **slow**: `/version`
+
+With the default scheduler this corresponds to 60 and 600 seconds.
+
+## Complete example
+
+```yaml
+proxmox:
+  url: https://192.168.1.10:8006
+  api_token_id: dashboard@pve!lcd-dashboard
+  api_token_secret: YOUR_TOKEN_SECRET
+  verify_ssl: false
+  include_lxc: true
+  vms:
+    homeassistant:
+      vmid: 100
+      title: Home Assistant
+    dockerhost: 101
+    mqtt_lxc:
+      vmid: 200
+      title: MQTT LXC
+
+PAGES:
+  - name: proxmox
+    layout:
+      row1cell1: proxmox
+      row1cell2: proxmox.homeassistant
+      row1cell3: proxmox.dockerhost
+      row2cell1: proxmox.mqtt_lxc
+```
+
+## SSL
+
+The registry default is currently `verify_ssl: false`, which is convenient for local Proxmox installations with self-signed certificates. For installations with a trusted certificate, explicitly use:
+
+```yaml
+proxmox:
+  url: https://pve.example.com:8006
+  api_token_id: dashboard@pve!lcd-dashboard
+  api_token_secret: YOUR_TOKEN_SECRET
+  verify_ssl: true
+  include_lxc: false
+  vms: {}
+```
+
+Real token values belong only in the local `config.yaml` and should not be committed.

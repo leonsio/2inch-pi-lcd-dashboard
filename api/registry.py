@@ -12,8 +12,17 @@ MODULES = {
     "system": ("dashboard_modules.system", {},
                "cpu ram swap hdd disk_free uptime load cpu_freq processes "
                "cpu_ring ram_ring swap_ring disk_ring hdd_ring freq_ring temp_ring"),
-    "network": ("dashboard_modules.network", {},
-                "ip hostname network traffic network_rx network_tx network_link wifi wifi_ring"),
+    "network": ("dashboard_modules.network", {
+        "wan": {
+            "enabled": False, "target": "1.1.1.1",
+            "interval": "medium", "timeout": 1.0,
+        },
+        "external_ipv4": {
+            "enabled": False, "url": "https://api.ipify.org",
+            "interval": "slow", "verify_ssl": True,
+        },
+        "checks": {},
+    }, "ip hostname network traffic network_rx network_tx network_link wifi wifi_ring"),
     "storage": ("dashboard_modules.storage", {
         "devices": {
             "root": {
@@ -60,6 +69,14 @@ def available_cards(data):
                  data.get("docker", {}).get("containers", {}))
     cards.update("rest." + name for name in
                  data.get("rest", {}).get("endpoints", {}))
+
+    network = data.get("network", {}) or {}
+    if bool((network.get("wan", {}) or {}).get("enabled", False)):
+        cards.add("wan")
+    if bool((network.get("external_ipv4", {}) or {}).get("enabled", False)):
+        cards.update({"wan_ip", "external_ipv4"})
+    cards.update("network." + name for name in (network.get("checks", {}) or {}))
+
     for name in data.get("storage", {}).get("devices", {}):
         cards.update({
             f"storage.{name}",

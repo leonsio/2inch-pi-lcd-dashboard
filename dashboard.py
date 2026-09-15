@@ -1,7 +1,7 @@
 """Modular Raspberry Pi LCD dashboard controller.
 
 Scheduling, rendering, data collection, navigation, GPIO input, and LCD driver
-selection are separated. GPIO navigation is enabled explicitly through config.py.
+selection are separated. GPIO navigation is enabled explicitly through config.yaml.
 """
 
 import logging
@@ -9,7 +9,12 @@ import signal
 import sys
 import time
 
-import config as cfg
+from dashboard_config import ConfigError, load_config
+
+try:
+    cfg = load_config()
+except ConfigError as error:
+    raise SystemExit(f"Configuration error: {error}") from None
 from dashboard_buttons import DashboardButtons
 from dashboard_modules import CARD_BUILDERS, COLLECTORS, POWER_ACTIONS, execute_power_action
 from dashboard_navigation import DashboardNavigator

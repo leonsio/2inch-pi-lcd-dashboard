@@ -38,7 +38,7 @@ def _openccu_ip(cfg):
     """Return the OpenCCU address configured by the user.
 
     OPENCCU_IP is the preferred setting. PIVCCU_FALLBACK_IP is accepted as a
-    compatibility alias for existing config.py files. No local discovery is
+    compatibility alias for existing config.yaml files. No local discovery is
     performed.
     """
     configured = getattr(cfg, "OPENCCU_IP", None)
@@ -218,6 +218,6 @@ CARD_BUILDERS = {
     "ha": card_home_assistant,
     "adguard": card_adguard,
     "openccu": card_openccu,
-    # Compatibility alias for existing config.py layouts.
+    # Compatibility alias for existing config.yaml layouts.
     "pivccu": card_openccu,
 }

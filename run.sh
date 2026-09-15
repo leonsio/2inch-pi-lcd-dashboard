@@ -101,6 +101,7 @@ prepare_environment() {
     ensure_virtual_environment
     install_python_dependencies
     verify_native_dependencies
+    "$VENV_DIR/bin/python" "$DIRNAME/dashboard_config.py"
 }
 
 cd "$DIRNAME"

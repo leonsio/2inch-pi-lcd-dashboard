@@ -1,0 +1,207 @@
+# Copy to config.yaml and enter your local values. See docs/Configuration.md.
+# This file also supplies defaults for omitted options. PAGES is replaced as a whole.
+# Quote colors and credentials. Use true/false and null (not Python literals).
+
+# Scheduler and behavior
+SHOW_PER_CORE: false
+REQUEST_TIMEOUT: 5
+DISPLAY_BACKLIGHT: 100
+
+# Optional command before power actions (null disables it)
+pre_shutdown: null
+
+# Display driver: 2inch or 1inch69; hardware pins remain in lcd/lcdconfig.py
+LCD_DEVICE: 2inch
+FAST_INTERVAL: 1
+MEDIUM_INTERVAL: 60
+SLOW_INTERVAL: 600
+
+# Logging
+LOG_LEVEL: INFO
+LOG_FAST_VALUES: false
+LOG_MEDIUM_VALUES: true
+LOG_SLOW_VALUES: true
+LOG_LOOP_TIMINGS: true
+LOG_BUTTON_EVENTS: true
+
+# IPv4 interface preference
+NETWORK_INTERFACES:
+- eth0
+- wlan0
+
+# GPIO buttons (BCM numbering); null disables an individual pin
+BUTTONS_ENABLED: false
+GPIO_BUTTON_PREVIOUS: 19
+GPIO_BUTTON_NEXT: 26
+GPIO_BUTTON_OK: 20
+GPIO_BUTTON_BACK: 21
+BUTTON_PULL_UP: true
+BUTTON_BOUNCE_TIME: 0.08
+
+# OpenCCU XML API; OPENCCU_IP below takes precedence when set
+PIVCCU_FALLBACK_IP: 192.168.2.155
+XML_RPC_TOKEN: YOUR_CCU_XML_API_TOKEN
+
+# Home Assistant and AdGuard
+HOME_ASSISTANT_URL: http://homeassistant.local:8123
+HOME_ASSISTANT_TOKEN: YOUR_HOME_ASSISTANT_LONG_LIVED_ACCESS_TOKEN
+ADGUARD_PROTECTION_ENTITY: switch.adguard_home_protection
+ADGUARD_BLOCKED_RATIO_ENTITY: sensor.adguard_home_dns_queries_blocked_ratio
+
+# Pi-hole v6 (empty URL disables polling)
+PIHOLE_URL: ''
+PIHOLE_PASSWORD: ''
+PIHOLE_VERIFY_SSL: true
+
+# Grid and selection
+GRID_ROWS: 3
+GRID_COLS: 3
+SHOW_SELECTION_FRAME: true
+C_SELECTED: '#0066FF'
+SELECTED_BORDER_WIDTH: 4
+SELECTED_INSET: 3
+
+# Pages: this entire list is replaced when PAGES is set in config.yaml
+PAGES:
+- name: overview
+  navigation: browse
+  layout:
+    row1cell1:
+      module: cpu
+      target_page: system_detail
+    row1cell2:
+      module: ram
+      target_page: system_detail
+    row1cell3:
+      module: hdd
+      target_page: storage_detail
+    row2cell1:
+      module: pivccu
+      target_page: services_detail
+    row2cell2:
+      module: home_assistant
+      target_page: services_detail
+    row2cell3:
+      module: adguard
+      target_page: services_detail
+    row3cell1:
+      module: uptime
+      selectable: false
+    row3cell2:
+      module: network
+      colspan: 2
+      target_page: network_detail
+- name: status
+  navigation: browse
+  layout:
+    row1cell1:
+      module: load
+      target_page: system_detail
+    row1cell2:
+      module: ip
+      target_page: network_detail
+    row1cell3:
+      module: hostname
+      selectable: false
+    row2cell1:
+      module: home_assistant
+      target_page: services_detail
+    row2cell2:
+      module: adguard
+      target_page: services_detail
+    row2cell3:
+      module: pivccu
+      target_page: services_detail
+- name: system_detail
+  navigation: detail
+  layout:
+    row1cell1: cpu
+    row1cell2: ram
+    row1cell3: load
+    row2cell1: uptime
+    row2cell2:
+      module: hostname
+      colspan: 2
+- name: storage_detail
+  navigation: detail
+  layout:
+    row1cell1:
+      module: hdd
+      colspan: 3
+    row2cell1: uptime
+    row2cell2:
+      module: hostname
+      colspan: 2
+- name: network_detail
+  navigation: detail
+  layout:
+    row1cell1:
+      module: network
+      colspan: 3
+    row2cell1:
+      module: ip
+      colspan: 2
+    row2cell3: hostname
+- name: services_detail
+  navigation: detail
+  layout:
+    row1cell1: home_assistant
+    row1cell2: adguard
+    row1cell3: pivccu
+    row2cell1:
+      module: network
+      colspan: 2
+    row2cell3: uptime
+
+# Fonts and theme (quote all colors)
+FONT_PATH: ./font/JetBrainsMono-Medium.ttf
+FONT_TITLE: 15
+FONT_VALUE: 24
+FONT_DETAIL: 13
+C_SCREEN_BG: '#FFFFFF'
+C_CELL_BG: '#FFFFFF'
+C_GRID: '#000000'
+C_BG: '#00129A'
+C_T1: '#000000'
+C_T2: '#666666'
+C_T3: '#666666'
+C_OK: '#008000'
+C_WARN: '#D08000'
+C_ERROR: '#FF0000'
+
+# Ring appearance
+RING_TRACK_COLOR: '#D9D9D9'
+RING_WIDTH: 6
+RING_PADDING: 4
+RING_TITLE_AREA: 15
+RING_VALUE_FONT: 17
+RING_TITLE_FONT: 13
+RING_COLOR_LOW: '#008000'
+RING_COLOR_MID: '#E6C200'
+RING_COLOR_HIGH: '#FF0000'
+RING_COLOR_MIDPOINT: 0.6
+TEMP_RING_MIN_C: 0
+TEMP_RING_MAX_C: 85
+
+# Explicit OpenCCU address; null uses PIVCCU_FALLBACK_IP
+OPENCCU_IP: null
+
+# Proxmox VE (requires URL, token ID and secret)
+PROXMOX_URL: ''
+PROXMOX_API_TOKEN_ID: ''
+PROXMOX_API_TOKEN_SECRET: ''
+PROXMOX_VERIFY_SSL: false
+PROXMOX_INCLUDE_LXC: false
+
+# Automatic font sizing
+AUTO_FONT_SCALE: true
+FONT_REFERENCE_WIDTH: 320
+FONT_REFERENCE_HEIGHT: 240
+FONT_SCALE_MIN: 0.6
+FONT_SCALE_MAX: 1.5
+TEXT_HORIZONTAL_PADDING: 5
+FONT_MIN_TITLE: 8
+FONT_MIN_VALUE: 10
+FONT_MIN_DETAIL: 7
+FONT_MIN_RING_VALUE: 8
+FONT_MIN_RING_TITLE: 7

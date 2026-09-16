@@ -32,6 +32,9 @@ MODULES = {
         },
         "smartctl": "smartctl",
     }, "storage"),
+    "services": ("dashboard_modules.services", {
+        "units": {},
+    }, "services services_running services_active services_failed services_total"),
     "power": ("dashboard_modules.power", {}, "shutdown reboot"),
     "pihole": ("dashboard_modules.pihole", {"url": "", "password": "", "verify_ssl": True}, "pihole pi_hole"),
     "pivccu": ("dashboard_modules.pivccu", {"ip": "", "token": ""}, "pivccu openccu"),
@@ -69,6 +72,8 @@ def available_cards(data):
                  data.get("docker", {}).get("containers", {}))
     cards.update("rest." + name for name in
                  data.get("rest", {}).get("endpoints", {}))
+    cards.update("services." + name for name in
+                 data.get("services", {}).get("units", {}))
 
     network = data.get("network", {}) or {}
     if bool((network.get("wan", {}) or {}).get("enabled", False)):

@@ -67,6 +67,16 @@ network: {}
 #       interval: medium
 #       timeout: 1.0
 # storage: {}  # Root filesystem; see docs/Storage.md for multiple disks and SMART
+# services: {} # systemd running/active/failed/total counters
+# services:
+#   units:
+#     dashboard:
+#       name: dashboard.service
+#       title: LCD Dashboard
+#     ssh: ssh.service
+#     docker:
+#       name: docker.service
+#       title: Docker Engine
 # power: {}  # Enables shutdown/reboot cards
 
 # Optional integrations (uncomment the block and enter your credentials):

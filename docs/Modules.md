@@ -9,6 +9,7 @@ This index links to the complete parameter reference for every module currently 
 | `system` | [System.md](System.md) | Local CPU, RAM, swap, disk, load, uptime, temperature and frequency metrics |
 | `network` | [Network.md](Network.md) | Local network, traffic, Wi-Fi, WAN, external IPv4 and reachability checks |
 | `storage` | [Storage.md](Storage.md) | Multiple filesystems, free/used space, I/O and SMART |
+| `services` | [Services.md](Services.md) | systemd running/active/failed counts and selected unit states |
 | `power` | [Power.md](Power.md) | Shutdown and reboot actions |
 | `pihole` | [PiHole.md](PiHole.md) | Pi-hole v6 blocking and query statistics |
 | `pivccu` | [PiVCCU.md](PiVCCU.md) | OpenCCU/piVCCU XML API system notifications |
@@ -26,6 +27,7 @@ Modules without required connection parameters can be activated with an empty ma
 system: {}
 network: {}
 storage: {}
+services: {}
 power: {}
 ```
 
@@ -78,7 +80,7 @@ Module documentation also points out global settings that affect that module. Co
 
 | Global setting | Default | Meaning |
 | --- | ---: | --- |
-| `REQUEST_TIMEOUT` | `5` | Network/API request timeout in seconds |
+| `REQUEST_TIMEOUT` | `5` | Network/API request timeout in seconds; also used as the local `systemctl` timeout by the services module |
 | `FAST_INTERVAL` | `1` | Fast scheduler interval |
 | `MEDIUM_INTERVAL` | `60` | Medium scheduler interval |
 | `SLOW_INTERVAL` | `600` | Slow scheduler interval |

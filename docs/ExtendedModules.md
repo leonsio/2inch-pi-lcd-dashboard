@@ -9,6 +9,7 @@ Use [Modules.md](Modules.md) as the central module index.
 | System | [System.md](System.md) |
 | Network | [Network.md](Network.md) |
 | Storage | [Storage.md](Storage.md) |
+| Services | [Services.md](Services.md) |
 | Power | [Power.md](Power.md) |
 | Pi-hole | [PiHole.md](PiHole.md) |
 | piVCCU / OpenCCU | [PiVCCU.md](PiVCCU.md) |

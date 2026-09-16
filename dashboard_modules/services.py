@@ -144,13 +144,13 @@ def collect_medium(state, cfg, logger):
         shown = _systemctl(
             [
                 "show",
-                *names,
                 "--property=Id",
                 "--property=LoadState",
                 "--property=ActiveState",
                 "--property=SubState",
                 "--property=UnitFileState",
                 "--no-pager",
+                *names,
             ],
             timeout,
         )
@@ -187,13 +187,26 @@ def collect_medium(state, cfg, logger):
         )
 
 
+def _summary_wait(title):
+    return {"title": title, "value": "WAIT", "detail": "", "status": "normal"}
+
+
 def _summary_unavailable(title):
     return {"title": title, "value": "N/A", "detail": "SYSTEMD", "status": "error"}
 
 
-def card_services(state):
+def _summary_ready(state, title):
+    if "services_available" not in state:
+        return _summary_wait(title)
     if not state.get("services_available"):
-        return _summary_unavailable("SERVICES")
+        return _summary_unavailable(title)
+    return None
+
+
+def card_services(state):
+    pending = _summary_ready(state, "SERVICES")
+    if pending:
+        return pending
     running = int(state.get("services_running", 0) or 0)
     failed = int(state.get("services_failed", 0) or 0)
     active = int(state.get("services_active", 0) or 0)
@@ -206,8 +219,9 @@ def card_services(state):
 
 
 def card_services_running(state):
-    if not state.get("services_available"):
-        return _summary_unavailable("RUNNING")
+    pending = _summary_ready(state, "RUNNING")
+    if pending:
+        return pending
     running = int(state.get("services_running", 0) or 0)
     active = int(state.get("services_active", 0) or 0)
     total = int(state.get("services_total", 0) or 0)
@@ -220,8 +234,9 @@ def card_services_running(state):
 
 
 def card_services_active(state):
-    if not state.get("services_available"):
-        return _summary_unavailable("ACTIVE")
+    pending = _summary_ready(state, "ACTIVE")
+    if pending:
+        return pending
     active = int(state.get("services_active", 0) or 0)
     total = int(state.get("services_total", 0) or 0)
     return {
@@ -233,8 +248,9 @@ def card_services_active(state):
 
 
 def card_services_failed(state):
-    if not state.get("services_available"):
-        return _summary_unavailable("FAILED")
+    pending = _summary_ready(state, "FAILED")
+    if pending:
+        return pending
     failed = int(state.get("services_failed", 0) or 0)
     total = int(state.get("services_total", 0) or 0)
     return {
@@ -246,8 +262,9 @@ def card_services_failed(state):
 
 
 def card_services_total(state):
-    if not state.get("services_available"):
-        return _summary_unavailable("SERVICES")
+    pending = _summary_ready(state, "SERVICES")
+    if pending:
+        return pending
     total = int(state.get("services_total", 0) or 0)
     return {
         "title": "SERVICES",
